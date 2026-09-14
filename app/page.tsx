@@ -66,7 +66,7 @@ export default function Home() {
         />
 
         <img
-          src="/footer/+91 600 608 7997.png"
+          src="/footer/phone.png"
           alt="+91 600 608 7997"
           className="h-[clamp(0.8rem,1.3vw,1.1rem)] w-auto object-contain"
         />
