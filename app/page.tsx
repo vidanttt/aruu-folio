@@ -12,7 +12,7 @@ export default function Home() {
       </header>
 
       <section
-        className="relative flex min-h-0 flex-1"
+        className="relative flex min-h-0 flex-1 max-md:flex-col"
         aria-label="Portfolio categories"
       >
         {/* Left panel — Video Edit */}
@@ -32,7 +32,7 @@ export default function Home() {
         </div>
 
         {/* Vertical divider */}
-        <div className="absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-foreground" />
+        <div className="absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-foreground max-md:inset-x-0 max-md:inset-y-auto max-md:top-1/2 max-md:left-0 max-md:h-px max-md:w-full max-md:translate-x-0 max-md:-translate-y-1/2" />
 
         {/* Right panel — Design */}
         <div className="relative flex flex-1 items-center justify-center overflow-hidden">
