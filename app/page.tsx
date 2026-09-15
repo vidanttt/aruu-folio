@@ -22,6 +22,7 @@ export default function Home() {
             alt=""
             className="absolute inset-0 h-full w-full scale-110 object-cover saturate-100 transition-[filter] duration-500 ease-in-out hover:saturate-[0.7]"
           />
+
           <div className="relative z-10 flex items-center justify-center">
             <img
               src="/video_edits.png"
@@ -31,7 +32,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Vertical divider */}
+        {/* Divider */}
         <div className="absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-foreground max-md:inset-x-0 max-md:inset-y-auto max-md:top-1/2 max-md:left-0 max-md:h-px max-md:w-full max-md:translate-x-0 max-md:-translate-y-1/2" />
 
         {/* Right panel — Design */}
@@ -52,24 +53,36 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="relative flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between border-t border-foreground bg-background px-6 max-md:px-3">
-        <img
-          src="/footer/wrk@aruu.fr.png"
-          alt="wrk@aruu.fr"
-          className="h-[clamp(0.8rem,1.3vw,1.1rem)] w-auto object-contain"
-        />
+      <footer className="relative flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between border-t border-foreground bg-background px-13 max-md:px-3 font-['Degular'] text-[21px] font-semibold leading-none tracking-[-0.05em] text-black">
+        <span
+          className="inline-block"
+          style={{
+            transform: "scaleX(1.35)",
+            transformOrigin: "left center",
+          }}
+        >
+          wrk@aruu.fr
+        </span>
 
-        <img
-          src="/footer/@aruuforeal.png"
-          alt="@aruuforeal"
-          className="absolute left-1/2 h-[clamp(0.8rem,1.3vw,1.1rem)] w-auto -translate-x-1/2 object-contain"
-        />
+        <span
+          className="absolute left-1/2 inline-block"
+          style={{
+            transform: "translateX(-50%) scaleX(1.35)",
+            transformOrigin: "center center",
+          }}
+        >
+          @aruuforeal
+        </span>
 
-        <img
-          src="/footer/phone.png"
-          alt="+91 600 608 7997"
-          className="h-[clamp(0.8rem,1.3vw,1.1rem)] w-auto object-contain"
-        />
+        <span
+          className="inline-block"
+          style={{
+            transform: "scaleX(1.35)",
+            transformOrigin: "right center",
+          }}
+        >
+          +91 600 608 7997
+        </span>
       </footer>
     </main>
   );

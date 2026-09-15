@@ -3,6 +3,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: 'Degular';
+  src: url('/fonts/degular-font-family/DegularDemo-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+
 @theme inline {
   --font-display: "UnifrakturCook", serif;
   --font-sans: "Archivo", sans-serif;
