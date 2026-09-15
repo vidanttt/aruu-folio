@@ -5,9 +5,10 @@ export default function Home() {
     <main className="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-[clamp(3.25rem,8vh,4.7rem)] shrink-0 items-center justify-center border-b border-foreground bg-background">
         <img
-          src="/wordmark.png"
+          src="/wordmark.svg"
           alt="ARUU for REAL"
-          className="h-[clamp(1.7rem,3.2vw,2.65rem)] w-auto object-contain"
+          className="h-[29px] w-auto object-contain"
+          style={{ filter: "brightness(0)" }}
         />
       </header>
 
@@ -25,9 +26,10 @@ export default function Home() {
 
           <div className="relative z-10 flex items-center justify-center">
             <img
-              src="/video_edits.png"
+              src="/video%20edits(1).svg"
               alt="Video Edits"
-              className="h-[120px] w-auto object-contain"
+              className="h-[97px] w-auto object-contain"
+            // style={{ filter: "brightness(0)" }}
             />
           </div>
         </div>
@@ -45,15 +47,16 @@ export default function Home() {
 
           <div className="relative z-10 flex items-center justify-center">
             <img
-              src="/design.png"
+              src="/aja_bhidle.svg"
               alt="Design"
-              className="h-[120px] w-auto object-contain"
+              className="h-[97px] w-auto object-contain"
+            // style={{ filter: "brightness(0)" }}
             />
           </div>
         </div>
       </section>
 
-      <footer className="relative flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between border-t border-foreground bg-background px-13 max-md:px-3 font-['Degular'] text-[21px] font-semibold leading-none tracking-[-0.05em] text-black">
+      <footer className="relative flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between border-t border-foreground bg-background px-7 max-md:px-3 font-['Degular'] text-[21px] font-semibold leading-none tracking-[-0.05em] text-black">
         <span
           className="inline-block"
           style={{
