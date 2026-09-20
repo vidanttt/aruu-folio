@@ -32,7 +32,34 @@ export async function updateSession(request: NextRequest) {
         }
     );
 
-    await supabase.auth.getClaims();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    // Protect the entire admin section
+    if (request.nextUrl.pathname.startsWith("/admin")) {
+        if (!user) {
+            const url = request.nextUrl.clone();
+            url.pathname = "/login";
+            url.searchParams.set("redirect", request.nextUrl.pathname);
+
+            return NextResponse.redirect(url);
+        }
+
+        // Check admin/editor role
+        const { data: role } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+        if (!role || !["admin", "editor"].includes(role.role)) {
+            const url = request.nextUrl.clone();
+            url.pathname = "/login";
+
+            return NextResponse.redirect(url);
+        }
+    }
 
     return supabaseResponse;
 }
