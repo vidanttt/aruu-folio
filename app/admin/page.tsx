@@ -107,19 +107,134 @@ export default function AdminPage() {
 
         if (!confirmed) return;
 
-        const { error } = await supabase
+        // Get all file references for this project
+        const { data: project, error: fetchError } = await supabase
             .from("projects")
-            .delete()
-            .eq("id", id);
+            .select(
+                "storage_paths, video_url, thumbnail_url, image_urls"
+            )
+            .eq("id", id)
+            .single();
 
-        if (error) {
+        if (fetchError || !project) {
             console.error(
-                "Delete project error:",
-                error
+                "Failed to fetch project before deletion:",
+                fetchError
             );
             return;
         }
 
+        const storagePaths = new Set<string>();
+
+        // --------------------------------------------------
+        // NEW PROJECTS
+        // Use the explicit storage_paths array
+        // --------------------------------------------------
+        if (Array.isArray(project.storage_paths)) {
+            for (const path of project.storage_paths) {
+                if (typeof path === "string" && path) {
+                    storagePaths.add(path);
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // OLD PROJECTS
+        // Extract paths from existing public URLs
+        // --------------------------------------------------
+        function extractStoragePath(url: string | null) {
+            if (!url) return null;
+
+            const marker = "/storage/v1/object/public/aruu/";
+
+            const index = url.indexOf(marker);
+
+            if (index === -1) return null;
+
+            return decodeURIComponent(
+                url.slice(index + marker.length)
+            );
+        }
+
+        const videoPath = extractStoragePath(
+            project.video_url
+        );
+
+        const thumbnailPath = extractStoragePath(
+            project.thumbnail_url
+        );
+
+        if (videoPath) {
+            storagePaths.add(videoPath);
+        }
+
+        if (thumbnailPath) {
+            storagePaths.add(thumbnailPath);
+        }
+
+        // Design images
+        if (Array.isArray(project.image_urls)) {
+            for (const imageUrl of project.image_urls) {
+                if (typeof imageUrl !== "string") continue;
+
+                const imagePath =
+                    extractStoragePath(imageUrl);
+
+                if (imagePath) {
+                    storagePaths.add(imagePath);
+                }
+            }
+        }
+
+        // --------------------------------------------------
+        // DELETE STORAGE FILES FIRST
+        // --------------------------------------------------
+        const pathsToDelete = Array.from(storagePaths);
+
+        if (pathsToDelete.length > 0) {
+            const { error: storageError } =
+                await supabase.storage
+                    .from("aruu")
+                    .remove(pathsToDelete);
+
+            if (storageError) {
+                console.error(
+                    "Storage deletion error:",
+                    storageError
+                );
+
+                alert(
+                    "The project was NOT deleted because its storage files could not be removed."
+                );
+
+                return;
+            }
+        }
+
+        // --------------------------------------------------
+        // DELETE DATABASE ROW
+        // --------------------------------------------------
+        const { error: deleteError } = await supabase
+            .from("projects")
+            .delete()
+            .eq("id", id);
+
+        if (deleteError) {
+            console.error(
+                "Database deletion error:",
+                deleteError
+            );
+
+            alert(
+                "Storage files were removed, but the project database row could not be deleted."
+            );
+
+            return;
+        }
+
+        // --------------------------------------------------
+        // REFRESH ADMIN UI + STORAGE BAR
+        // --------------------------------------------------
         await loadProjects();
         await loadStorageUsage();
     }
@@ -245,9 +360,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`py-4 text-sm font-semibold transition ${selectedCategory ===
-                                "video-edit"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            "video-edit"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         VIDEO EDITS
@@ -260,9 +375,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory ===
-                                "design"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            "design"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         DESIGN
@@ -340,8 +455,8 @@ export default function AdminPage() {
                                             )
                                         }
                                         className={`border border-black px-4 py-2 text-sm ${project.published
-                                                ? "bg-black text-white"
-                                                : "bg-white text-black"
+                                            ? "bg-black text-white"
+                                            : "bg-white text-black"
                                             }`}
                                     >
                                         {project.published
