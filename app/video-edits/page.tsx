@@ -1,71 +1,194 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Footer from "../components/Footer";
+import { createClient } from "@/lib/supabase/client";
+
+type Project = {
+  id: number;
+  name: string;
+  category: string;
+  aspect_ratio: string;
+  position: number;
+  thumbnail_url: string | null;
+  published: boolean;
+};
 
 export default function VideoEditsPage() {
+  const supabase = createClient();
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
   /*
-   * 5-column grid — 1 unit per column (each col = 20vw)
-   * Row unit R = 100vw / 180  →  each col = 36 row-units wide
+   * Exact existing layout.
    *
-   * Integer row-spans per tile:
-   *   3:4  @ 1 col (36 ru wide)  →  36 × (4/3) = 48 rows
-   *   9:16 @ 1 col (36 ru wide)  →  36 × (16/9) = 64 rows
-   *   16:9 @ 2 cols (72 ru wide) →  72 × (9/16) = 40.5 ≈ 41 rows
-   *   4:3  @ 2 cols (72 ru wide) →  72 × (3/4) = 54 rows
+   * Position mapping:
    *
-   * Layout (col / row, 1-indexed):
-   *  ┌─────┬──────────┬──────────┐
-   *  │ 3:4 │  16:9    │  4:3     │  r1
-   *  │     ├────┬─────┤          │
-   *  │     │3:4 │ 3:4 ├──────────┤  r42 / r49
-   *  ├─────┤    │     │  16:9    │
-   *  │ 9:16│    │     │          │
-   *  │     │    │     │          │
-   *  └─────┴────┴─────┴──────────┘
+   *  0 ┌─────┬──────────┬──────────┐
+   *    │  0  │     1    │    2     │
+   *    │     │          │          │
+   *    ├─────┤────┬─────┤          │
+   *    │  3  │  4 │  5  │    2     │
+   *    │     │    │     │          │
+   *    │     │    │     │          │
+   *    └─────┴────┴─────┴──────────┘
+   *
+   * These positions correspond to the original grid.
    */
 
   const tiles = [
-    { label: '3:4', col: '1 / 2', row: '1  / 49' },   // 48 rows ✓
-    { label: '16:9', col: '2 / 4', row: '1  / 42' },   // 41 rows ≈
-    { label: '4:3', col: '4 / 6', row: '1  / 55' },   // 54 rows ✓
-    { label: '9:16', col: '1 / 2', row: '49 / 113' },  // 64 rows ✓
-    { label: '3:4', col: '2 / 3', row: '42 / 90' },   // 48 rows ✓
-    { label: '3:4', col: '3 / 4', row: '42 / 90' },   // 48 rows ✓
-    { label: '16:9', col: '4 / 6', row: '55 / 96' },   // 41 rows ≈
+    {
+      position: 0,
+      col: "1 / 2",
+      row: "1 / 49",
+    },
+    {
+      position: 1,
+      col: "2 / 4",
+      row: "1 / 42",
+    },
+    {
+      position: 2,
+      col: "4 / 6",
+      row: "1 / 55",
+    },
+    {
+      position: 3,
+      col: "1 / 2",
+      row: "49 / 113",
+    },
+    {
+      position: 4,
+      col: "2 / 3",
+      row: "42 / 90",
+    },
+    {
+      position: 5,
+      col: "3 / 4",
+      row: "42 / 90",
+    },
+    {
+      position: 6,
+      col: "4 / 6",
+      row: "55 / 96",
+    },
   ];
 
-  const mobileRatios = ['3/4', '16/9', '4/3', '9/16', '3/4', '3/4', '16/9'];
+  const mobileRatios = [
+    "3/4",
+    "16/9",
+    "4/3",
+    "9/16",
+    "3/4",
+    "3/4",
+    "16/9",
+  ];
+
+  useEffect(() => {
+    async function loadProjects() {
+      const { data, error } = await supabase
+        .from("projects")
+        .select(
+          "id, name, category, aspect_ratio, position, thumbnail_url, published"
+        )
+        .eq("category", "video-edit")
+        .eq("published", true)
+        .order("position", { ascending: true });
+
+      if (error) {
+        console.error("Failed to load projects:", error);
+        setProjects([]);
+      } else {
+        setProjects(data || []);
+      }
+
+      setLoading(false);
+    }
+
+    loadProjects();
+  }, []);
+
+  function getProject(position: number) {
+    return projects.find(
+      (project) => project.position === position
+    );
+  }
 
   return (
-    <div className="flex flex-col min-h-full bg-background justify-between">
+    <div className="flex min-h-full flex-col justify-between bg-background">
       <div className="w-full flex-1">
-        {/* ── Mobile fallback: single column stack ── */}
+        {/* ── Mobile ── */}
         <div className="flex flex-col gap-px bg-foreground md:hidden">
-          {mobileRatios.map((r, i) => (
-            <div key={i} className="w-full bg-background" style={{ aspectRatio: r }} />
-          ))}
+          {mobileRatios.map((ratio, index) => {
+            const project = getProject(index);
+
+            return (
+              <div
+                key={index}
+                className="relative w-full overflow-hidden bg-background"
+                style={{ aspectRatio: ratio }}
+              >
+                {project?.thumbnail_url && (
+                  <video
+                    src={project.thumbnail_url}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        {/* ── Desktop: 5-col interlocking grid ── */}
+        {/* ── Desktop: exact existing 5-column grid ── */}
         <div
-          className="hidden md:grid bg-foreground"
+          className="mx-auto hidden w-full max-w-[1920px] md:grid"
           style={{
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gridAutoRows: 'calc(100vw / 180)',
-            gap: '1px',
+            gridTemplateColumns: "repeat(5, 1fr)",
+            gridAutoRows:
+              "calc(min(100vw, 1920px) / 180)",
+            gap: "1px",
+            backgroundColor: "var(--foreground)",
           }}
         >
-          {tiles.map((t, i) => (
-            <div
-              key={i}
-              className="bg-background"
-              style={{ gridColumn: t.col, gridRow: t.row }}
-            />
-          ))}
+          {tiles.map((tile) => {
+            const project = getProject(tile.position);
+
+            return (
+              <div
+                key={tile.position}
+                className="relative overflow-hidden bg-background"
+                style={{
+                  gridColumn: tile.col,
+                  gridRow: tile.row,
+                }}
+              >
+                {project?.thumbnail_url && (
+                  <video
+                    src={project.thumbnail_url}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Footer at end of page */}
-      <Footer borderTop={false} />
+      {/* Footer */}
+      <div className="mx-auto w-full max-w-[1920px]">
+        <Footer borderTop={false} />
+      </div>
     </div>
   );
 }
-
