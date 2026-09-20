@@ -11,6 +11,7 @@ export default function NewProjectPage() {
     const [kind, setKind] = useState("");
     const [softwares, setSoftwares] = useState("");
     const [client, setClient] = useState("");
+    const [clientUrl, setClientUrl] = useState("");
     const [projectDate, setProjectDate] = useState("");
     const [category, setCategory] = useState("video-edit");
     const [aspectRatio, setAspectRatio] = useState("16:9");
@@ -291,6 +292,7 @@ export default function NewProjectPage() {
                         kind,
                         softwares,
                         client,
+                        client_url: clientUrl || null,
                         project_date: projectDate || null,
                         category,
                         aspect_ratio: aspectRatio,
@@ -388,6 +390,19 @@ export default function NewProjectPage() {
                                 required
                                 className="w-full border border-black px-4 py-3 outline-none"
                                 placeholder="Client name"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-sm font-medium">
+                                Client URL (optional)
+                            </label>
+
+                            <input
+                                value={clientUrl}
+                                onChange={(e) => setClientUrl(e.target.value)}
+                                className="w-full border border-black px-4 py-3 outline-none"
+                                placeholder="https://..."
                             />
                         </div>
 
@@ -511,17 +526,7 @@ export default function NewProjectPage() {
 
                         <textarea
                             value={description}
-                            onChange={(e) => {
-                                const nextCategory = e.target.value;
-
-                                setCategory(nextCategory);
-
-                                setAspectRatio(
-                                    nextCategory === "design"
-                                        ? "2:3"
-                                        : "16:9"
-                                );
-                            }}
+                            onChange={(e) => setDescription(e.target.value)}
                             rows={5}
                             className="w-full resize-none border border-black px-4 py-3 outline-none"
                             placeholder="Project description..."

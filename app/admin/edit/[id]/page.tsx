@@ -17,6 +17,7 @@ type ProjectForm = {
     kind: string;
     softwares: string;
     client: string;
+    client_url: string;
     project_date: string;
     category: string;
     aspect_ratio: string;
@@ -40,6 +41,7 @@ export default function EditProjectPage() {
         kind: "",
         softwares: "",
         client: "",
+        client_url: "",
         project_date: "",
         category: "video-edit",
         aspect_ratio: "",
@@ -84,6 +86,7 @@ export default function EditProjectPage() {
                 kind: data.kind || "",
                 softwares: data.softwares || "",
                 client: data.client || "",
+                client_url: data.client_url || "",
                 project_date: data.project_date || "",
                 category: data.category || "video-edit",
                 aspect_ratio: data.aspect_ratio || "",
@@ -289,6 +292,7 @@ export default function EditProjectPage() {
                     kind: form.kind,
                     softwares: form.softwares,
                     client: form.client,
+                    client_url: form.client_url || null,
                     project_date: form.project_date || null,
                     category: form.category,
                     aspect_ratio: form.aspect_ratio,
@@ -451,6 +455,26 @@ export default function EditProjectPage() {
                                     }
                                     className="w-full border border-black p-3 outline-none"
                                     required
+                                />
+                            </div>
+
+                            {/* CLIENT URL */}
+
+                            <div>
+                                <label className="mb-2 block text-sm font-medium">
+                                    Client URL (optional)
+                                </label>
+
+                                <input
+                                    value={form.client_url}
+                                    onChange={(e) =>
+                                        updateField(
+                                            "client_url",
+                                            e.target.value
+                                        )
+                                    }
+                                    className="w-full border border-black p-3 outline-none"
+                                    placeholder="https://..."
                                 />
                             </div>
 

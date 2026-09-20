@@ -107,45 +107,63 @@ export default function AdminPage() {
 
         if (!confirmed) return;
 
-        // Get all file references for this project
-        const { data: project, error: fetchError } = await supabase
-            .from("projects")
-            .select(
-                "storage_paths, video_url, thumbnail_url, image_urls"
-            )
-            .eq("id", id)
-            .single();
+        // ==================================================
+        // 1. GET PROJECT + ALL ASSOCIATED FILE REFERENCES
+        // ==================================================
+
+        const { data: project, error: fetchError } =
+            await supabase
+                .from("projects")
+                .select(
+                    "id, storage_paths, video_url, thumbnail_url, image_urls"
+                )
+                .eq("id", id)
+                .single();
 
         if (fetchError || !project) {
             console.error(
                 "Failed to fetch project before deletion:",
                 fetchError
             );
+
+            alert(
+                `Could not find the project.\n\n${fetchError?.message || "Unknown error"
+                }`
+            );
+
             return;
         }
 
         const storagePaths = new Set<string>();
 
-        // --------------------------------------------------
-        // NEW PROJECTS
-        // Use the explicit storage_paths array
-        // --------------------------------------------------
+        // ==================================================
+        // 2. NEW PROJECTS
+        // storage_paths contains exact Storage paths
+        // ==================================================
+
         if (Array.isArray(project.storage_paths)) {
             for (const path of project.storage_paths) {
-                if (typeof path === "string" && path) {
+                if (
+                    typeof path === "string" &&
+                    path.trim()
+                ) {
                     storagePaths.add(path);
                 }
             }
         }
 
-        // --------------------------------------------------
-        // OLD PROJECTS
-        // Extract paths from existing public URLs
-        // --------------------------------------------------
-        function extractStoragePath(url: string | null) {
+        // ==================================================
+        // 3. OLD PROJECTS
+        // Extract Storage paths from public URLs
+        // ==================================================
+
+        function extractStoragePath(
+            url: string | null
+        ) {
             if (!url) return null;
 
-            const marker = "/storage/v1/object/public/aruu/";
+            const marker =
+                "/storage/v1/object/public/aruu/";
 
             const index = url.indexOf(marker);
 
@@ -156,17 +174,19 @@ export default function AdminPage() {
             );
         }
 
-        const videoPath = extractStoragePath(
-            project.video_url
-        );
-
-        const thumbnailPath = extractStoragePath(
-            project.thumbnail_url
-        );
+        // Video
+        const videoPath =
+            extractStoragePath(project.video_url);
 
         if (videoPath) {
             storagePaths.add(videoPath);
         }
+
+        // Thumbnail / preview
+        const thumbnailPath =
+            extractStoragePath(
+                project.thumbnail_url
+            );
 
         if (thumbnailPath) {
             storagePaths.add(thumbnailPath);
@@ -175,7 +195,11 @@ export default function AdminPage() {
         // Design images
         if (Array.isArray(project.image_urls)) {
             for (const imageUrl of project.image_urls) {
-                if (typeof imageUrl !== "string") continue;
+                if (
+                    typeof imageUrl !== "string"
+                ) {
+                    continue;
+                }
 
                 const imagePath =
                     extractStoragePath(imageUrl);
@@ -186,10 +210,17 @@ export default function AdminPage() {
             }
         }
 
-        // --------------------------------------------------
-        // DELETE STORAGE FILES FIRST
-        // --------------------------------------------------
-        const pathsToDelete = Array.from(storagePaths);
+        const pathsToDelete =
+            Array.from(storagePaths);
+
+        console.log(
+            "Files to delete:",
+            pathsToDelete
+        );
+
+        // ==================================================
+        // 4. DELETE STORAGE FILES
+        // ==================================================
 
         if (pathsToDelete.length > 0) {
             const { error: storageError } =
@@ -204,20 +235,27 @@ export default function AdminPage() {
                 );
 
                 alert(
-                    "The project was NOT deleted because its storage files could not be removed."
+                    `Storage deletion failed:\n\n${storageError.message}`
                 );
 
                 return;
             }
         }
 
-        // --------------------------------------------------
-        // DELETE DATABASE ROW
-        // --------------------------------------------------
-        const { error: deleteError } = await supabase
+        // ==================================================
+        // 5. DELETE DATABASE ROW
+        // .select() lets us VERIFY that a row was deleted
+        // ==================================================
+
+        const {
+            data: deletedProject,
+            error: deleteError,
+        } = await supabase
             .from("projects")
             .delete()
-            .eq("id", id);
+            .eq("id", id)
+            .select("id")
+            .maybeSingle();
 
         if (deleteError) {
             console.error(
@@ -226,15 +264,34 @@ export default function AdminPage() {
             );
 
             alert(
-                "Storage files were removed, but the project database row could not be deleted."
+                `Database deletion failed:\n\n${deleteError.message}`
             );
 
             return;
         }
 
-        // --------------------------------------------------
-        // REFRESH ADMIN UI + STORAGE BAR
-        // --------------------------------------------------
+        // If no row comes back, the DELETE affected nothing.
+        if (!deletedProject) {
+            console.error(
+                "No database row was deleted."
+            );
+
+            alert(
+                "The Storage files were removed, but the project database row was NOT deleted.\n\nCheck your Supabase DELETE RLS policy for the projects table."
+            );
+
+            return;
+        }
+
+        console.log(
+            "Project deleted successfully:",
+            deletedProject.id
+        );
+
+        // ==================================================
+        // 6. REFRESH EVERYTHING
+        // ==================================================
+
         await loadProjects();
         await loadStorageUsage();
     }
@@ -360,9 +417,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`py-4 text-sm font-semibold transition ${selectedCategory ===
-                            "video-edit"
-                            ? "bg-black text-white"
-                            : "bg-white text-black hover:bg-neutral-100"
+                                "video-edit"
+                                ? "bg-black text-white"
+                                : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         VIDEO EDITS
@@ -375,9 +432,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory ===
-                            "design"
-                            ? "bg-black text-white"
-                            : "bg-white text-black hover:bg-neutral-100"
+                                "design"
+                                ? "bg-black text-white"
+                                : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         DESIGN
@@ -455,8 +512,8 @@ export default function AdminPage() {
                                             )
                                         }
                                         className={`border border-black px-4 py-2 text-sm ${project.published
-                                            ? "bg-black text-white"
-                                            : "bg-white text-black"
+                                                ? "bg-black text-white"
+                                                : "bg-white text-black"
                                             }`}
                                     >
                                         {project.published

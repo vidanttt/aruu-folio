@@ -23,6 +23,7 @@ type Project = {
   kind: string;
   softwares: string;
   client: string;
+  client_url: string | null;
   project_date: string | null;
   category: string;
   aspect_ratio: string;
@@ -206,6 +207,23 @@ export default function DesignPage() {
 
   const [selectedImageIndex, setSelectedImageIndex] =
     useState(0);
+
+  const [copied, setCopied] =
+    useState(false);
+
+  const copyTimeoutRef =
+    useRef<NodeJS.Timeout | null>(null);
+
+  const initialDeepLinkHandled =
+    useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /*
    * When a second tile is clicked while the first artwork is
@@ -653,7 +671,7 @@ export default function DesignPage() {
         await supabase
           .from("projects")
           .select(
-            "id, name, skill, kind, softwares, client, project_date, category, aspect_ratio, position, image_urls, thumbnail_url, description, published"
+            "id, name, skill, kind, softwares, client, client_url, project_date, category, aspect_ratio, position, image_urls, thumbnail_url, description, published"
           )
           .eq("category", "design")
           .eq("published", true)
@@ -681,6 +699,72 @@ export default function DesignPage() {
 
     loadProjects();
   }, []);
+
+  /*
+   * Automatically open project if ?project=<id> is in URL on initial load
+   */
+  useEffect(() => {
+    if (initialDeepLinkHandled.current || projects.length === 0) return;
+    initialDeepLinkHandled.current = true;
+
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const projectIdParam = params.get("project");
+    if (!projectIdParam) return;
+
+    const targetProject = projects.find(
+      (p) => String(p.id) === projectIdParam
+    );
+    if (!targetProject) return;
+
+    const imgParam = params.get("img");
+    const targetImgIndex = imgParam
+      ? Math.max(0, parseInt(imgParam, 10) - 1)
+      : 0;
+
+    requestAnimationFrame(() => {
+      const tileEl =
+        desktopTileRefs.current[targetProject.id] ||
+        mobileTileRefs.current[targetProject.id];
+      openProject(targetProject, tileEl, targetImgIndex);
+    });
+  }, [projects]);
+
+  /*
+   * Handle browser back / forward buttons
+   */
+  useEffect(() => {
+    function handlePopState() {
+      const params = new URLSearchParams(window.location.search);
+      const projectIdParam = params.get("project");
+
+      if (!projectIdParam) {
+        if (selectedProject && animationPhase !== "closing") {
+          closeProject();
+        }
+      } else {
+        const targetProject = projects.find(
+          (p) => String(p.id) === projectIdParam
+        );
+        if (targetProject && selectedProject?.id !== targetProject.id) {
+          const imgParam = params.get("img");
+          const targetImgIndex = imgParam
+            ? Math.max(0, parseInt(imgParam, 10) - 1)
+            : 0;
+          const tileEl =
+            desktopTileRefs.current[targetProject.id] ||
+            mobileTileRefs.current[targetProject.id];
+          openProject(targetProject, tileEl, targetImgIndex);
+        }
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [projects, selectedProject, animationPhase]);
 
   /*
    * ============================================================
@@ -716,10 +800,10 @@ export default function DesignPage() {
         )
         : Math.min(
           Math.max(
-            viewportWidth * 0.27,
-            280
+            viewportWidth * 0.20,
+            200
           ),
-          520
+          380
         );
 
     /*
@@ -778,23 +862,56 @@ export default function DesignPage() {
 
   /*
    * ============================================================
+   * DEFAULT SOURCE RECT (FALLBACK)
+   * ============================================================
+   */
+
+  function getDefaultSourceRect(): Rect {
+    const vw =
+      typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh =
+      typeof window !== "undefined" ? window.innerHeight : 800;
+    return {
+      left: vw > 768 ? vw * 0.35 : 20,
+      top: 100,
+      width: vw > 768 ? vw * 0.55 : Math.max(100, vw - 40),
+      height: vh * 0.75,
+    };
+  }
+
+  /*
+   * ============================================================
    * OPEN PROJECT
    * ============================================================
    */
 
   function openProject(
     project: Project,
-    imageElement: HTMLImageElement
+    imageElement?: HTMLImageElement | null,
+    initialImageIndex: number = 0
   ) {
-    const rect =
-      imageElement.getBoundingClientRect();
+    let sourceRect: Rect;
 
-    const sourceRect: Rect = {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    };
+    if (imageElement) {
+      const rect = imageElement.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        sourceRect = {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      } else {
+        sourceRect = getDefaultSourceRect();
+      }
+    } else {
+      const liveRect = getLiveTileRect(project.id);
+      if (liveRect && liveRect.width > 0 && liveRect.height > 0) {
+        sourceRect = liveRect;
+      } else {
+        sourceRect = getDefaultSourceRect();
+      }
+    }
 
     /*
      * If the current artwork is already closing and the user
@@ -879,12 +996,30 @@ export default function DesignPage() {
 
     setSelectedProject(project);
 
-    setSelectedImageIndex(0);
+    const images = getProjectImages(project);
+    const safeIndex =
+      initialImageIndex >= 0 && initialImageIndex < images.length
+        ? initialImageIndex
+        : 0;
+
+    setSelectedImageIndex(safeIndex);
 
     document.body.style.overflow =
       "hidden";
 
     setAnimationPhase("opening");
+
+    // Sync URL with unique project ID and image index
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("project", String(project.id));
+      if (safeIndex > 0) {
+        url.searchParams.set("img", String(safeIndex + 1));
+      } else {
+        url.searchParams.delete("img");
+      }
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
   }
 
   /*
@@ -899,6 +1034,18 @@ export default function DesignPage() {
       animationPhase === "closing"
     ) {
       return;
+    }
+
+    setCopied(false);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("project");
+      url.searchParams.delete("img");
+      window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
     }
 
     const projectId =
@@ -956,12 +1103,22 @@ export default function DesignPage() {
 
     if (images.length <= 1) return;
 
-    setSelectedImageIndex(
-      (current) =>
-        current === 0
-          ? images.length - 1
-          : current - 1
-    );
+    const nextIndex =
+      selectedImageIndex === 0
+        ? images.length - 1
+        : selectedImageIndex - 1;
+
+    setSelectedImageIndex(nextIndex);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (nextIndex > 0) {
+        url.searchParams.set("img", String(nextIndex + 1));
+      } else {
+        url.searchParams.delete("img");
+      }
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
   }
 
   function showNextImage() {
@@ -974,12 +1131,22 @@ export default function DesignPage() {
 
     if (images.length <= 1) return;
 
-    setSelectedImageIndex(
-      (current) =>
-        current === images.length - 1
-          ? 0
-          : current + 1
-    );
+    const nextIndex =
+      selectedImageIndex === images.length - 1
+        ? 0
+        : selectedImageIndex + 1;
+
+    setSelectedImageIndex(nextIndex);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (nextIndex > 0) {
+        url.searchParams.set("img", String(nextIndex + 1));
+      } else {
+        url.searchParams.delete("img");
+      }
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
   }
 
   /*
@@ -1559,7 +1726,7 @@ export default function DesignPage() {
               ================================================== */}
 
               <motion.aside
-                className="fixed bottom-0 left-0 top-[76px] z-[100] w-[27vw] min-w-[280px] max-w-[520px] overflow-hidden border-r border-black bg-white"
+                className="fixed bottom-0 left-0 top-[76px] z-[100] w-[20vw] min-w-[200px] max-w-[380px] overflow-hidden border-r border-black bg-white"
                 initial={{
                   x: "-100%",
                 }}
@@ -1610,66 +1777,100 @@ export default function DesignPage() {
                     <button
                       type="button"
                       aria-label="Share"
+                      title={copied ? "Copied link!" : "Share link"}
                       onClick={async () => {
+                        const shareUrl = `${window.location.origin}/design?project=${selectedProject.id}${selectedImageIndex > 0 ? `&img=${selectedImageIndex + 1}` : ""
+                          }`;
+
                         const shareData = {
-                          title:
-                            selectedProject.name,
-
-                          text:
-                            selectedProject.name,
-
-                          url:
-                            window.location.href,
+                          title: selectedProject.name,
+                          text: selectedProject.name,
+                          url: shareUrl,
                         };
 
-                        try {
-                          if (
-                            navigator.share
-                          ) {
-                            await navigator.share(
-                              shareData
-                            );
-                          } else {
-                            await navigator.clipboard.writeText(
-                              window.location.href
-                            );
+                        const isMobile =
+                          typeof window !== "undefined" &&
+                          window.matchMedia("(max-width: 768px)").matches;
+
+                        let shared = false;
+                        if (isMobile && typeof navigator !== "undefined" && navigator.share) {
+                          try {
+                            await navigator.share(shareData);
+                            shared = true;
+                          } catch {
+                            // User dismissed or share failed
                           }
-                        } catch {
-                          /*
-                           * User cancelled share.
-                           */
+                        }
+
+                        if (!shared && typeof navigator !== "undefined" && navigator.clipboard) {
+                          try {
+                            await navigator.clipboard.writeText(shareUrl);
+                            setCopied(true);
+                            if (copyTimeoutRef.current) {
+                              clearTimeout(copyTimeoutRef.current);
+                            }
+                            copyTimeoutRef.current = setTimeout(() => {
+                              setCopied(false);
+                            }, 2000);
+                          } catch (err) {
+                            console.error("Failed to copy link:", err);
+                          }
                         }
                       }}
                       className="flex h-full w-[52px] shrink-0 items-center justify-center border-r border-black transition-opacity hover:opacity-50"
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 13 13"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path
-                          d="M6.5 9V1"
-                          stroke="black"
-                          strokeWidth="1"
-                        />
+                      {copied ? (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M3 8.5L6.5 12L13 4"
+                            stroke="black"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 13 13"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M6.5 9V1"
+                            stroke="black"
+                            strokeWidth="1"
+                          />
 
-                        <path
-                          d="M3.5 4L6.5 1L9.5 4"
-                          stroke="black"
-                          strokeWidth="1"
-                        />
+                          <path
+                            d="M3.5 4L6.5 1L9.5 4"
+                            stroke="black"
+                            strokeWidth="1"
+                          />
 
-                        <path
-                          d="M1 7V11.5H12V7"
-                          stroke="black"
-                          strokeWidth="1"
-                        />
-                      </svg>
+                          <path
+                            d="M1 7V11.5H12V7"
+                            stroke="black"
+                            strokeWidth="1"
+                          />
+                        </svg>
+                      )}
                     </button>
 
-                    <div className="flex-1" />
+                    <div className="flex flex-1 items-center px-4 overflow-hidden">
+                      {copied && (
+                        <span className="font-['Degular'] text-[11px] font-semibold uppercase tracking-[0.08em] text-black/60 truncate transition-opacity duration-200">
+                          Link copied
+                        </span>
+                      )}
+                    </div>
 
                     <button
                       type="button"
@@ -1771,10 +1972,22 @@ export default function DesignPage() {
                     </div>
 
                     <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
-                      {
-                        selectedProject.client ||
+                      {selectedProject.client ? (
+                        selectedProject.client_url ? (
+                          <a
+                            href={selectedProject.client_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline hover:opacity-75 transition-opacity duration-200"
+                          >
+                            {selectedProject.client}
+                          </a>
+                        ) : (
+                          selectedProject.client
+                        )
+                      ) : (
                         "—"
-                      }
+                      )}
                     </div>
                   </div>
 
