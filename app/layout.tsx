@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Link from "next/link";
+import SiteHeader from "./components/SiteHeader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,16 +36,7 @@ export default function RootLayout({
       </head>
 
       <body className="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-background text-foreground">
-        <header className="flex h-[clamp(3.25rem,8vh,4.7rem)] shrink-0 items-center justify-center border-b border-foreground bg-background z-50">
-          <Link href="/">
-            <img
-              src="/wordmark.svg"
-              alt="ARUU for REAL"
-              className="h-[29px] w-auto object-contain transition-opacity hover:opacity-80"
-              style={{ filter: "brightness(0)" }}
-            />
-          </Link>
-        </header>
+        <SiteHeader />
 
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
           {children}

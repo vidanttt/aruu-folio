@@ -72,16 +72,21 @@ function easeOutCubic(t: number) {
 }
 
 /*
- * Site header height.
- *
- * The sidebar (and the artwork's target
- * area) begin a few pixels BELOW this, so
- * the header's own bottom border line is
- * never covered by the sidebar.
+ * Site header height. Keep this in sync with
+ * the shared SiteHeader clamp so the viewer
+ * chrome starts on the same pixel as the
+ * bottom of the static header.
  */
-const HEADER_HEIGHT = 72;
-const HEADER_GAP = 4;
-const SIDEBAR_TOP = HEADER_HEIGHT + HEADER_GAP;
+function getHeaderHeight() {
+  if (typeof window === "undefined") {
+    return 72;
+  }
+
+  return Math.min(
+    Math.max(64, window.innerHeight * 0.1),
+    89.6
+  );
+}
 
 /*
  * ============================================================
@@ -225,18 +230,12 @@ export default function DesignPage() {
     };
   }, []);
 
-  /*
-   * When a second tile is clicked while the first artwork is
-   * closing, the first artwork gets its own independent close
-   * animation. This lets the old image finish travelling back
-   * while the newly clicked image starts its opening animation
-   * at the exact same time.
-   */
-  const [outgoingArtwork, setOutgoingArtwork] =
-    useState<{
-      projectId: number;
-      imageUrl: string;
-    } | null>(null);
+  // A second click during a close is queued so only one artwork
+  // ever exists in the flying layer. This prevents ghost frames.
+  const pendingOpenRef = useRef<{
+    project: Project;
+    initialImageIndex: number;
+  } | null>(null);
 
   const [animationPhase, setAnimationPhase] =
     useState<AnimationPhase>("closed");
@@ -322,13 +321,6 @@ export default function DesignPage() {
   const artWidth = useMotionValue(0);
   const artHeight = useMotionValue(0);
 
-  // Independent MotionValues for an artwork that is already
-  // closing while a new artwork starts opening.
-  const outgoingLeft = useMotionValue(0);
-  const outgoingTop = useMotionValue(0);
-  const outgoingWidth = useMotionValue(0);
-  const outgoingHeight = useMotionValue(0);
-
   function getArtworkRect(): Rect {
     return {
       left: artLeft.get(),
@@ -336,15 +328,6 @@ export default function DesignPage() {
       width: artWidth.get(),
       height: artHeight.get(),
     };
-  }
-
-  function setOutgoingRectInstant(
-    rect: Rect
-  ) {
-    outgoingLeft.set(rect.left);
-    outgoingTop.set(rect.top);
-    outgoingWidth.set(rect.width);
-    outgoingHeight.set(rect.height);
   }
 
   function setArtworkRectInstant(
@@ -412,9 +395,6 @@ export default function DesignPage() {
   const closeFrameRef =
     useRef<number | null>(null);
 
-  const outgoingCloseFrameRef =
-    useRef<number | null>(null);
-
   const animationPhaseRef =
     useRef<AnimationPhase>(
       animationPhase
@@ -428,7 +408,6 @@ export default function DesignPage() {
   useEffect(() => {
     return () => {
       stopCloseAnimation();
-      stopOutgoingCloseAnimation();
       stopArtworkAnimation();
     };
   }, []);
@@ -443,27 +422,13 @@ export default function DesignPage() {
     }
   }
 
-  function stopOutgoingCloseAnimation() {
-    if (
-      outgoingCloseFrameRef.current !==
-      null
-    ) {
-      cancelAnimationFrame(
-        outgoingCloseFrameRef.current
-      );
-
-      outgoingCloseFrameRef.current =
-        null;
-    }
-  }
-
   function getSafeCloseTarget(
     liveTarget: Rect
   ): Rect {
     return {
       ...liveTarget,
       top: Math.max(
-        SIDEBAR_TOP,
+        getHeaderHeight(),
         liveTarget.top
       ),
     };
@@ -570,92 +535,6 @@ export default function DesignPage() {
       requestAnimationFrame(frame);
   }
 
-  function runOutgoingCloseAnimation(
-    projectId: number,
-    startRect: Rect,
-    durationMs: number
-  ) {
-    stopOutgoingCloseAnimation();
-
-    const startTime =
-      performance.now();
-
-    // Same live-scroll baseline for an artwork that is already
-    // closing while a new artwork is being opened.
-    const initialTarget = getSafeCloseTarget(
-      getLiveTileRect(projectId) || startRect
-    );
-
-    function frame(now: number) {
-      const elapsed =
-        now - startTime;
-
-      const t = Math.min(
-        1,
-        elapsed / durationMs
-      );
-
-      const eased =
-        easeOutCubic(t);
-
-      const liveTarget =
-        getSafeCloseTarget(
-          getLiveTileRect(
-            projectId
-          ) || initialTarget
-        );
-
-      /* Follow scroll 1:1 while preserving the close easing. */
-      setOutgoingRectInstant({
-        left:
-          startRect.left +
-          (initialTarget.left -
-            startRect.left) *
-          eased +
-          (liveTarget.left -
-            initialTarget.left),
-
-        top:
-          startRect.top +
-          (initialTarget.top -
-            startRect.top) *
-          eased +
-          (liveTarget.top -
-            initialTarget.top),
-
-        width:
-          startRect.width +
-          (initialTarget.width -
-            startRect.width) *
-          eased +
-          (liveTarget.width -
-            initialTarget.width),
-
-        height:
-          startRect.height +
-          (initialTarget.height -
-            startRect.height) *
-          eased +
-          (liveTarget.height -
-            initialTarget.height),
-      });
-
-      if (t < 1) {
-        outgoingCloseFrameRef.current =
-          requestAnimationFrame(
-            frame
-          );
-      } else {
-        outgoingCloseFrameRef.current =
-          null;
-
-        setOutgoingArtwork(null);
-      }
-    }
-
-    outgoingCloseFrameRef.current =
-      requestAnimationFrame(frame);
-  }
 
   /*
    * ============================================================
@@ -787,7 +666,7 @@ export default function DesignPage() {
      *
      * Sidebar begins directly underneath it.
      */
-    const headerHeight = SIDEBAR_TOP;
+    const headerHeight = getHeaderHeight();
 
     /*
      * Sidebar width.
@@ -885,7 +764,7 @@ export default function DesignPage() {
    * ============================================================
    */
 
-  function openProject(
+  function beginOpenProject(
     project: Project,
     imageElement?: HTMLImageElement | null,
     initialImageIndex: number = 0
@@ -894,122 +773,31 @@ export default function DesignPage() {
 
     if (imageElement) {
       const rect = imageElement.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        sourceRect = {
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-        };
-      } else {
-        sourceRect = getDefaultSourceRect();
-      }
+      sourceRect = rect.width > 0 && rect.height > 0
+        ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+        : getDefaultSourceRect();
     } else {
       const liveRect = getLiveTileRect(project.id);
-      if (liveRect && liveRect.width > 0 && liveRect.height > 0) {
-        sourceRect = liveRect;
-      } else {
-        sourceRect = getDefaultSourceRect();
-      }
+      sourceRect = liveRect && liveRect.width > 0 && liveRect.height > 0
+        ? liveRect
+        : getDefaultSourceRect();
     }
 
-    /*
-     * If the current artwork is already closing and the user
-     * clicks another tile, do NOT kill the first artwork's close
-     * animation. Transfer it to an independent outgoing layer.
-     * The newly clicked artwork can then start opening immediately.
-     */
-    if (
-      animationPhase === "closing" &&
-      selectedProject
-    ) {
-      const oldImages =
-        getProjectImages(
-          selectedProject
-        );
-
-      const oldImageUrl =
-        oldImages[
-        selectedImageIndex
-        ];
-
-      if (oldImageUrl) {
-        const oldRect =
-          getArtworkRect();
-
-        setOutgoingRectInstant(
-          oldRect
-        );
-
-        setOutgoingArtwork({
-          projectId:
-            selectedProject.id,
-          imageUrl:
-            oldImageUrl,
-        });
-
-        runOutgoingCloseAnimation(
-          selectedProject.id,
-          oldRect,
-          CLOSE_DURATION * 1000
-        );
-      }
-    }
-
-    /*
-     * Cancel the old active close loop after its state has been
-     * transferred to the independent outgoing layer above.
-     */
     stopCloseAnimation();
-
-    /*
-     * Stop any active MotionValue tween. This is important when
-     * switching during an opening animation: the new artwork must
-     * continue from the exact pixel where the old artwork currently
-     * is instead of snapping.
-     */
     stopArtworkAnimation();
-
-    const wasAnimating =
-      animationPhase !== "closed";
-
-    /*
-     * Fresh open: snap straight to the clicked tile before growing.
-     * Interrupting an existing animation: keep the current artwork
-     * exactly where it is and retarget it toward the new artwork.
-     */
-    if (!wasAnimating) {
-      setArtworkRectInstant(
-        sourceRect
-      );
-    } else if (
-      animationPhase === "closing"
-    ) {
-      // The old closing artwork was transferred above, so this
-      // active layer now becomes the newly clicked artwork.
-      setArtworkRectInstant(
-        sourceRect
-      );
-    }
-
+    setArtworkRectInstant(sourceRect);
     setOriginRect(sourceRect);
-
     setSelectedProject(project);
 
     const images = getProjectImages(project);
-    const safeIndex =
-      initialImageIndex >= 0 && initialImageIndex < images.length
-        ? initialImageIndex
-        : 0;
-
+    const safeIndex = initialImageIndex >= 0 && initialImageIndex < images.length
+      ? initialImageIndex
+      : 0;
     setSelectedImageIndex(safeIndex);
 
-    document.body.style.overflow =
-      "hidden";
-
+    document.body.style.overflow = "hidden";
     setAnimationPhase("opening");
 
-    // Sync URL with unique project ID and image index
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("project", String(project.id));
@@ -1020,6 +808,27 @@ export default function DesignPage() {
       }
       window.history.replaceState(null, "", url.pathname + url.search);
     }
+  }
+
+  function openProject(
+    project: Project,
+    imageElement?: HTMLImageElement | null,
+    initialImageIndex: number = 0
+  ) {
+    const isTransitioning = animationPhaseRef.current !== "closed";
+    const isDifferentProject = selectedProject && selectedProject.id !== project.id;
+
+    // Never overlap two flying artworks. Finish the current one first,
+    // then measure the newly requested tile and open from that exact rect.
+    if (isTransitioning && isDifferentProject) {
+      pendingOpenRef.current = { project, initialImageIndex };
+      if (animationPhaseRef.current !== "closing") {
+        closeProject();
+      }
+      return;
+    }
+
+    beginOpenProject(project, imageElement, initialImageIndex);
   }
 
   /*
@@ -1076,13 +885,26 @@ export default function DesignPage() {
       startRect,
       CLOSE_DURATION * 1000,
       () => {
+        const pendingOpen = pendingOpenRef.current;
+        pendingOpenRef.current = null;
+
         setSelectedProject(null);
-
         setSelectedImageIndex(0);
-
         setOriginRect(null);
-
         setAnimationPhase("closed");
+
+        if (pendingOpen) {
+          requestAnimationFrame(() => {
+            const tileEl =
+              desktopTileRefs.current[pendingOpen.project.id] ||
+              mobileTileRefs.current[pendingOpen.project.id];
+            beginOpenProject(
+              pendingOpen.project,
+              tileEl,
+              pendingOpen.initialImageIndex
+            );
+          });
+        }
       }
     );
   }
@@ -1379,11 +1201,13 @@ export default function DesignPage() {
     animationPhase === "opening" ||
       animationPhase === "open"
       ? {
-        scale: 0.992,
+        scale: 1.04,
+        x: 200,
         filter: "blur(12px)",
       }
       : {
         scale: 1,
+        x: 0,
         filter: "blur(0px)",
       };
 
@@ -1470,12 +1294,8 @@ export default function DesignPage() {
                * This prevents the black rectangle.
                */
               const isSelectedTile =
-                (selectedProject?.id ===
-                  project?.id &&
-                  animationPhase !==
-                  "closed") ||
-                outgoingArtwork?.projectId ===
-                project?.id;
+                selectedProject?.id === project?.id &&
+                animationPhase !== "closed";
 
               return (
                 <div
@@ -1570,12 +1390,8 @@ export default function DesignPage() {
                 }
 
                 const isSelectedTile =
-                  (selectedProject?.id ===
-                    project.id &&
-                    animationPhase !==
-                    "closed") ||
-                  outgoingArtwork?.projectId ===
-                  project.id;
+                  selectedProject?.id === project.id &&
+                  animationPhase !== "closed";
 
                 return (
                   <div
@@ -1633,35 +1449,6 @@ export default function DesignPage() {
       </motion.div>
 
       {/* ========================================================
-          OUTGOING ARTWORK
-
-          This exists only when the user clicks another tile while
-          the previous artwork is still closing. It allows the old
-          artwork to finish its close at the exact same time the
-          new artwork begins opening.
-      ======================================================== */}
-
-      {outgoingArtwork && (
-        <motion.div
-          className="fixed z-[75] overflow-hidden"
-          style={{
-            left: outgoingLeft,
-            top: outgoingTop,
-            width: outgoingWidth,
-            height: outgoingHeight,
-            pointerEvents: "none",
-          }}
-        >
-          <img
-            src={outgoingArtwork.imageUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full select-none object-contain"
-            draggable={false}
-          />
-        </motion.div>
-      )}
-
-      {/* ========================================================
           PROJECT VIEWER
       ======================================================== */}
 
@@ -1714,9 +1501,8 @@ export default function DesignPage() {
               {/* ==================================================
                   SIDEBAR
 
-                  Sits BELOW the static site header
-                  (top-[76px], a few px clear of its
-                  bottom border) and to the left.
+                  Sits directly below the static site
+                  header and to the left.
 
                   Its own control row (close / share /
                   prev / next) lives INSIDE it, as the
@@ -1726,7 +1512,7 @@ export default function DesignPage() {
               ================================================== */}
 
               <motion.aside
-                className="fixed bottom-0 left-0 top-[76px] z-[100] w-[20vw] min-w-[200px] max-w-[380px] overflow-hidden border-r border-black bg-white"
+                className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] overflow-hidden border-r border-black bg-white"
                 initial={{
                   x: "-100%",
                 }}
@@ -2103,45 +1889,14 @@ export default function DesignPage() {
                   event.stopPropagation();
                 }}
               >
-                <AnimatePresence
-                  mode="wait"
-                  initial={false}
-                >
-                  {selectedImages[
-                    selectedImageIndex
-                  ] && (
-                      <motion.img
-                        key={
-                          selectedImages[
-                          selectedImageIndex
-                          ]
-                        }
-                        src={
-                          selectedImages[
-                          selectedImageIndex
-                          ]
-                        }
-                        alt={
-                          selectedProject.name
-                        }
-                        className="absolute inset-0 h-full w-full select-none object-contain"
-                        draggable={false}
-                        initial={{
-                          opacity: 0,
-                        }}
-                        animate={{
-                          opacity: 1,
-                        }}
-                        exit={{
-                          opacity: 0,
-                        }}
-                        transition={{
-                          duration: 0.3,
-                          ease: EASE,
-                        }}
-                      />
-                    )}
-                </AnimatePresence>
+                {selectedImages[selectedImageIndex] && (
+                  <motion.img
+                    src={selectedImages[selectedImageIndex]}
+                    alt={selectedProject.name}
+                    className="absolute inset-0 h-full w-full select-none object-contain"
+                    draggable={false}
+                  />
+                )}
               </motion.div>
             </>
           )}
