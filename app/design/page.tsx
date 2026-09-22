@@ -101,43 +101,60 @@ function getHeaderHeight() {
  * Vertical sizes can vary independently.
  */
 
-const tiles = [
+const baseTiles = [
   {
-    position: 0,
     col: "1 / 2",
     row: "1 / 55",
   },
   {
-    position: 1,
     col: "2 / 4",
     row: "1 / 55",
   },
   {
-    position: 2,
     col: "4 / 6",
     row: "1 / 42",
   },
   {
-    position: 3,
     col: "1 / 2",
     row: "55 / 109",
   },
   {
-    position: 4,
     col: "2 / 4",
     row: "55 / 82",
   },
   {
-    position: 5,
     col: "4 / 5",
     row: "42 / 96",
   },
   {
-    position: 6,
     col: "5 / 6",
     row: "42 / 96",
   },
 ];
+
+function getDynamicTile(index: number) {
+  if (index < baseTiles.length) {
+    return baseTiles[index];
+  }
+
+  /*
+   * After the original 7-tile composition is filled, keep adding
+   * projects automatically instead of requiring another hard-coded
+   * position. New projects are placed in two-column blocks.
+   */
+  const extraIndex = index - baseTiles.length;
+  const rowStart = 109 + Math.floor(extraIndex / 2) * 54;
+
+  return extraIndex % 2 === 0
+    ? {
+      col: "1 / 3",
+      row: `${rowStart} / ${rowStart + 54}`,
+    }
+    : {
+      col: "3 / 6",
+      row: `${rowStart} / ${rowStart + 54}`,
+    };
+}
 
 function getProjectImages(project: Project) {
   if (
@@ -1268,89 +1285,83 @@ export default function DesignPage() {
                 "1px solid #000",
             }}
           >
-            {tiles.map((tile) => {
-              const project =
-                projects.find(
-                  (item) =>
-                    item.position ===
-                    tile.position
-                );
+            {projects
+              .slice()
+              .sort((a, b) => a.position - b.position)
+              .map((project, index) => {
+                const tile = getDynamicTile(index);
 
-              const images = project
-                ? getProjectImages(
-                  project
-                )
-                : [];
+                const images = getProjectImages(project);
 
-              const image =
-                images[0] || null;
+                const image =
+                  images[0] || null;
 
-              /*
-               * Hide ONLY the original image
-               * that is currently being animated.
-               *
-               * The tile itself stays WHITE.
-               *
-               * This prevents the black rectangle.
-               */
-              const isSelectedTile =
-                selectedProject?.id === project?.id &&
-                animationPhase !== "closed";
+                /*
+                 * Hide ONLY the original image
+                 * that is currently being animated.
+                 *
+                 * The tile itself stays WHITE.
+                 *
+                 * This prevents the black rectangle.
+                 */
+                const isSelectedTile =
+                  selectedProject?.id === project?.id &&
+                  animationPhase !== "closed";
 
-              return (
-                <div
-                  key={tile.position}
-                  className="relative overflow-hidden border-b border-r border-black bg-white"
-                  style={{
-                    gridColumn: tile.col,
-                    gridRow: tile.row,
-                  }}
-                >
-                  {project && image ? (
-                    <button
-                      type="button"
-                      className="group absolute inset-0 block h-full w-full overflow-hidden bg-white"
-                      onClick={(event) => {
-                        const img =
-                          event.currentTarget.querySelector(
-                            "img"
+                return (
+                  <div
+                    key={project.id}
+                    className="relative overflow-hidden border-b border-r border-black bg-white"
+                    style={{
+                      gridColumn: tile.col,
+                      gridRow: tile.row,
+                    }}
+                  >
+                    {project && image ? (
+                      <button
+                        type="button"
+                        className="group absolute inset-0 block h-full w-full overflow-hidden bg-white"
+                        onClick={(event) => {
+                          const img =
+                            event.currentTarget.querySelector(
+                              "img"
+                            );
+
+                          if (!img) return;
+
+                          openProject(
+                            project,
+                            img
                           );
-
-                        if (!img) return;
-
-                        openProject(
-                          project,
-                          img
-                        );
-                      }}
-                    >
-                      <motion.img
-                        src={image}
-                        alt={
-                          project.name
-                        }
-                        ref={(el) => {
-                          desktopTileRefs.current[
-                            project.id
-                          ] = el;
                         }}
-                        animate={{
-                          opacity:
-                            isSelectedTile
-                              ? 0
-                              : 1,
-                        }}
-                        transition={{
-                          duration: 0,
-                        }}
-                        className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
-                        draggable={false}
-                      />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
+                      >
+                        <motion.img
+                          src={image}
+                          alt={
+                            project.name
+                          }
+                          ref={(el) => {
+                            desktopTileRefs.current[
+                              project.id
+                            ] = el;
+                          }}
+                          animate={{
+                            opacity:
+                              isSelectedTile
+                                ? 0
+                                : 1,
+                          }}
+                          transition={{
+                            duration: 0,
+                          }}
+                          className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                          draggable={false}
+                        />
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
           </div>
         </div>
 

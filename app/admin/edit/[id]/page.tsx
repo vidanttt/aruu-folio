@@ -11,6 +11,11 @@ type DesignImage = {
     isNew?: boolean;
 };
 
+type PreviewVideo = {
+    file: File;
+    url: string;
+};
+
 type ProjectForm = {
     name: string;
     skill: string;
@@ -22,10 +27,8 @@ type ProjectForm = {
     category: string;
     aspect_ratio: string;
     description: string;
-    video_url: string;
     thumbnail_url: string;
     published: boolean;
-    position: string;
 };
 
 export default function EditProjectPage() {
@@ -46,14 +49,16 @@ export default function EditProjectPage() {
         category: "video-edit",
         aspect_ratio: "",
         description: "",
-        video_url: "",
         thumbnail_url: "",
         published: false,
-        position: "0",
     });
 
     const [designImages, setDesignImages] = useState<DesignImage[]>([]);
     const [originalImageUrls, setOriginalImageUrls] = useState<string[]>([]);
+    const [originalStoragePaths, setOriginalStoragePaths] = useState<string[]>([]);
+    const [originalCategory, setOriginalCategory] = useState("video-edit");
+    const [previewVideo, setPreviewVideo] = useState<PreviewVideo | null>(null);
+    const [draggingPreview, setDraggingPreview] = useState(false);
     const [draggingImageIndex, setDraggingImageIndex] = useState<number | null>(
         null
     );
@@ -91,13 +96,33 @@ export default function EditProjectPage() {
                 category: data.category || "video-edit",
                 aspect_ratio: data.aspect_ratio || "",
                 description: data.description || "",
-                video_url: data.video_url || "",
                 thumbnail_url: data.thumbnail_url || "",
                 published: data.published || false,
-                position: String(data.position ?? 0),
             });
 
             setOriginalImageUrls(imageUrls);
+            const storedPaths: string[] = Array.isArray(data.storage_paths)
+                ? data.storage_paths
+                : [];
+
+            const fallbackPaths = [
+                ...imageUrls,
+                ...(data.category === "video-edit" && data.thumbnail_url
+                    ? [data.thumbnail_url]
+                    : []),
+            ]
+                .map(extractStoragePath)
+                .filter(
+                    (path): path is string =>
+                        Boolean(path)
+                );
+
+            setOriginalStoragePaths(
+                storedPaths.length > 0
+                    ? storedPaths
+                    : fallbackPaths
+            );
+            setOriginalCategory(data.category || "video-edit");
 
             setDesignImages(
                 imageUrls.map((url, index) => ({
@@ -198,6 +223,34 @@ export default function EditProjectPage() {
         setDraggingImageIndex(targetIndex);
     }
 
+    function handlePreviewVideo(file: File) {
+        if (!file.type.startsWith("video/")) {
+            setError("Please upload a video file.");
+            return;
+        }
+
+        if (previewVideo?.url) {
+            URL.revokeObjectURL(previewVideo.url);
+        }
+
+        setPreviewVideo({
+            file,
+            url: URL.createObjectURL(file),
+        });
+        setError("");
+    }
+
+    function handlePreviewDrop(e: DragEvent<HTMLDivElement>) {
+        e.preventDefault();
+        setDraggingPreview(false);
+
+        const file = e.dataTransfer.files?.[0];
+
+        if (file) {
+            handlePreviewVideo(file);
+        }
+    }
+
     function extractStoragePath(url: string) {
         const marker = "/storage/v1/object/public/aruu/";
 
@@ -241,7 +294,10 @@ export default function EditProjectPage() {
             .from("aruu")
             .getPublicUrl(imagePath);
 
-        return data.publicUrl;
+        return {
+            url: data.publicUrl,
+            path: imagePath,
+        };
     }
 
     async function handleSubmit(
@@ -249,11 +305,23 @@ export default function EditProjectPage() {
     ) {
         e.preventDefault();
 
+        if (form.category === "video-edit" && !form.thumbnail_url && !previewVideo) {
+            setError("Please upload the preview video.");
+            return;
+        }
+
+        if (form.category === "design" && designImages.length === 0) {
+            setError("Please upload at least one design image.");
+            return;
+        }
+
         setSaving(true);
         setError("");
 
         try {
             let finalImageUrls: string[] = [];
+            let finalStoragePaths: string[] = [];
+            let finalThumbnailUrl: string | null = null;
 
             /*
              * DESIGN IMAGES
@@ -268,21 +336,123 @@ export default function EditProjectPage() {
                     const image = designImages[index];
 
                     if (image.file) {
-                        const uploadedUrl =
-                            await uploadDesignImage(
-                                image.file,
-                                index
-                            );
+                        const uploaded = await uploadDesignImage(
+                            image.file,
+                            index
+                        );
 
-                        finalImageUrls.push(uploadedUrl);
+                        finalImageUrls.push(uploaded.url);
+                        finalStoragePaths.push(uploaded.path);
                     } else {
                         finalImageUrls.push(image.url);
+
+                        const existingPath = extractStoragePath(image.url);
+
+                        if (existingPath) {
+                            finalStoragePaths.push(existingPath);
+                        }
+                    }
+                }
+
+                finalThumbnailUrl = finalImageUrls[0] || null;
+            }
+
+            /*
+             * VIDEO EDIT
+             *
+             * Preview video is the only video used.
+             * If a new preview is uploaded, replace the old preview.
+             */
+
+            if (form.category === "video-edit") {
+                if (previewVideo) {
+                    const safePreviewName = previewVideo.file.name.replace(
+                        /[^a-zA-Z0-9.-]/g,
+                        "-"
+                    );
+
+                    const previewPath =
+                        `previews/${Date.now()}-${safePreviewName}`;
+
+                    const { error: uploadError } = await supabase.storage
+                        .from("aruu")
+                        .upload(previewPath, previewVideo.file, {
+                            cacheControl: "3600",
+                            upsert: false,
+                        });
+
+                    if (uploadError) {
+                        throw new Error(
+                            `Preview video upload failed: ${uploadError.message}`
+                        );
+                    }
+
+                    const { data: previewData } = supabase.storage
+                        .from("aruu")
+                        .getPublicUrl(previewPath);
+
+                    finalThumbnailUrl = previewData.publicUrl;
+                    finalStoragePaths = [previewPath];
+                } else {
+                    finalThumbnailUrl = form.thumbnail_url || null;
+
+                    const existingPreviewPath =
+                        extractStoragePath(form.thumbnail_url);
+
+                    if (existingPreviewPath) {
+                        finalStoragePaths = [existingPreviewPath];
                     }
                 }
             }
 
-            const firstImage =
-                finalImageUrls[0] || null;
+            /*
+             * If the category changed, automatically place the project
+             * at the end of the new category.
+             *
+             * Otherwise preserve its current position.
+             */
+
+            let nextPosition = 0;
+
+            if (form.category === originalCategory) {
+                const { data: currentProject, error: currentProjectError } =
+                    await supabase
+                        .from("projects")
+                        .select("position")
+                        .eq("id", id)
+                        .single();
+
+                if (currentProjectError) {
+                    throw new Error(
+                        `Could not determine project position: ${currentProjectError.message}`
+                    );
+                }
+
+                nextPosition = currentProject?.position ?? 0;
+            } else {
+                const { data: lastProject, error: positionError } =
+                    await supabase
+                        .from("projects")
+                        .select("position")
+                        .eq("category", form.category)
+                        .neq("id", id)
+                        .order("position", {
+                            ascending: false,
+                        })
+                        .limit(1)
+                        .maybeSingle();
+
+                if (positionError) {
+                    throw new Error(
+                        `Could not determine project position: ${positionError.message}`
+                    );
+                }
+
+                nextPosition =
+                    lastProject?.position != null
+                        ? lastProject.position + 1
+                        : 0;
+            }
 
             const { error: updateError } = await supabase
                 .from("projects")
@@ -297,20 +467,19 @@ export default function EditProjectPage() {
                     category: form.category,
                     aspect_ratio: form.aspect_ratio,
                     description: form.description || null,
-                    video_url: form.video_url || null,
 
-                    thumbnail_url:
-                        form.category === "design"
-                            ? firstImage
-                            : form.thumbnail_url || null,
+                    video_url: null,
+
+                    thumbnail_url: finalThumbnailUrl,
 
                     image_urls:
                         form.category === "design"
                             ? finalImageUrls
                             : [],
 
-                    position:
-                        Number(form.position) || 0,
+                    storage_paths: finalStoragePaths,
+
+                    position: nextPosition,
 
                     published: form.published,
                 })
@@ -323,39 +492,28 @@ export default function EditProjectPage() {
             }
 
             /*
-             * DELETE REMOVED DESIGN IMAGES
-             *
-             * Only delete files that existed before editing
-             * and are no longer part of the project.
+             * DELETE STORAGE FILES THAT ARE NO LONGER USED.
              */
 
-            if (form.category === "design") {
-                const removedUrls =
-                    originalImageUrls.filter(
-                        (url) =>
-                            !finalImageUrls.includes(url)
+            const pathsToDelete = originalStoragePaths.filter(
+                (path) => !finalStoragePaths.includes(path)
+            );
+
+            if (pathsToDelete.length > 0) {
+                const { error: removeError } = await supabase.storage
+                    .from("aruu")
+                    .remove(pathsToDelete);
+
+                if (removeError) {
+                    console.error(
+                        "Storage cleanup error:",
+                        removeError
                     );
-
-                const removedPaths = removedUrls
-                    .map(extractStoragePath)
-                    .filter(
-                        (path): path is string =>
-                            Boolean(path)
-                    );
-
-                if (removedPaths.length > 0) {
-                    const { error: removeError } =
-                        await supabase.storage
-                            .from("aruu")
-                            .remove(removedPaths);
-
-                    if (removeError) {
-                        console.error(
-                            "Storage cleanup error:",
-                            removeError
-                        );
-                    }
                 }
+            }
+
+            if (previewVideo?.url) {
+                URL.revokeObjectURL(previewVideo.url);
             }
 
             router.push("/admin");
@@ -659,31 +817,7 @@ export default function EditProjectPage() {
                                 </select>
                             </div>
 
-                            {/* POSITION */}
 
-                            <div>
-                                <label className="mb-2 block text-sm font-medium">
-                                    Grid Position
-                                </label>
-
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={form.position}
-                                    onChange={(e) =>
-                                        updateField(
-                                            "position",
-                                            e.target.value
-                                        )
-                                    }
-                                    className="w-full border border-black p-3 outline-none"
-                                />
-
-                                <p className="mt-2 text-xs">
-                                    Controls where this project appears
-                                    in the portfolio grid.
-                                </p>
-                            </div>
                         </div>
 
                         {/* DESCRIPTION */}
@@ -754,9 +888,9 @@ export default function EditProjectPage() {
                                                     )
                                                 }
                                                 className={`group cursor-grab border border-black bg-white transition ${draggingImageIndex ===
-                                                        index
-                                                        ? "opacity-40"
-                                                        : "opacity-100"
+                                                    index
+                                                    ? "opacity-40"
+                                                    : "opacity-100"
                                                     }`}
                                             >
                                                 <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
@@ -861,43 +995,114 @@ export default function EditProjectPage() {
                     {form.category === "video-edit" && (
                         <section>
                             <h2 className="mb-5 text-2xl font-semibold">
-                                Video Information
+                                Preview Video
                             </h2>
 
-                            <div className="flex flex-col gap-6">
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium">
-                                        Video URL
-                                    </label>
+                            <p className="mb-5 text-sm">
+                                This preview video is used everywhere on the portfolio.
+                            </p>
 
-                                    <input
-                                        value={form.video_url}
-                                        onChange={(e) =>
-                                            updateField(
-                                                "video_url",
-                                                e.target.value
-                                            )
+                            <div
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    setDraggingPreview(true);
+                                }}
+                                onDragLeave={() =>
+                                    setDraggingPreview(false)
+                                }
+                                onDrop={handlePreviewDrop}
+                                onClick={() =>
+                                    document
+                                        .getElementById(
+                                            "edit-preview-video-input"
+                                        )
+                                        ?.click()
+                                }
+                                className={`relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center overflow-hidden border border-dashed border-black p-6 text-center transition ${draggingPreview
+                                    ? "bg-black text-white"
+                                    : "bg-white"
+                                    }`}
+                            >
+                                <input
+                                    id="edit-preview-video-input"
+                                    type="file"
+                                    accept="video/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file =
+                                            e.target.files?.[0];
+
+                                        if (file) {
+                                            handlePreviewVideo(file);
                                         }
-                                        className="w-full border border-black p-3 outline-none"
-                                    />
-                                </div>
 
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium">
-                                        Thumbnail URL
-                                    </label>
+                                        e.target.value = "";
+                                    }}
+                                />
 
-                                    <input
-                                        value={form.thumbnail_url}
-                                        onChange={(e) =>
-                                            updateField(
-                                                "thumbnail_url",
-                                                e.target.value
-                                            )
-                                        }
-                                        className="w-full border border-black p-3 outline-none"
-                                    />
-                                </div>
+                                {previewVideo ? (
+                                    <>
+                                        <video
+                                            src={previewVideo.url}
+                                            muted
+                                            loop
+                                            autoPlay
+                                            playsInline
+                                            className="absolute inset-0 h-full w-full object-contain"
+                                        />
+
+                                        <div className="absolute inset-x-0 bottom-0 bg-black/80 px-4 py-3 text-left text-white">
+                                            <p className="truncate text-sm font-semibold">
+                                                {previewVideo.file.name}
+                                            </p>
+
+                                            <p className="mt-1 text-xs">
+                                                {(
+                                                    previewVideo.file.size /
+                                                    1024 /
+                                                    1024
+                                                ).toFixed(2)}{" "}
+                                                MB · Click to replace
+                                            </p>
+                                        </div>
+                                    </>
+                                ) : form.thumbnail_url ? (
+                                    <>
+                                        <video
+                                            src={form.thumbnail_url}
+                                            muted
+                                            loop
+                                            autoPlay
+                                            playsInline
+                                            preload="metadata"
+                                            className="absolute inset-0 h-full w-full object-contain"
+                                        />
+
+                                        <div className="absolute inset-x-0 bottom-0 bg-black/80 px-4 py-3 text-left text-white">
+                                            <p className="truncate text-sm font-semibold">
+                                                Current preview video
+                                            </p>
+
+                                            <p className="mt-1 text-xs">
+                                                Click or drop a new video to replace it
+                                            </p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-lg font-semibold">
+                                            Drop preview video here
+                                        </p>
+
+                                        <p className="mt-2 text-sm">
+                                            or click to browse
+                                        </p>
+
+                                        <p className="mt-4 text-xs">
+                                            Preview video is required
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         </section>
                     )}

@@ -16,10 +16,8 @@ export default function NewProjectPage() {
     const [category, setCategory] = useState("video-edit");
     const [aspectRatio, setAspectRatio] = useState("16:9");
     const [description, setDescription] = useState("");
-    const [position, setPosition] = useState("0");
     const [published, setPublished] = useState(false);
 
-    const [videoFile, setVideoFile] = useState<File | null>(null);
     const [previewVideoFile, setPreviewVideoFile] =
         useState<File | null>(null);
 
@@ -27,29 +25,11 @@ export default function NewProjectPage() {
     const [draggingImageIndex, setDraggingImageIndex] =
         useState<number | null>(null);
 
-    const [draggingVideo, setDraggingVideo] = useState(false);
     const [draggingPreview, setDraggingPreview] = useState(false);
     const [draggingDesign, setDraggingDesign] = useState(false);
 
     const [uploading, setUploading] = useState(false);
     const [status, setStatus] = useState("");
-
-    function handleVideoDrop(e: DragEvent<HTMLDivElement>) {
-        e.preventDefault();
-        setDraggingVideo(false);
-
-        const file = e.dataTransfer.files?.[0];
-
-        if (!file) return;
-
-        if (!file.type.startsWith("video/")) {
-            setStatus("Please upload a video file.");
-            return;
-        }
-
-        setVideoFile(file);
-        setStatus("");
-    }
 
     function handlePreviewDrop(e: DragEvent<HTMLDivElement>) {
         e.preventDefault();
@@ -154,47 +134,15 @@ export default function NewProjectPage() {
 
             const timestamp = Date.now();
 
-            let videoUrl: string | null = null;
             let previewUrl: string | null = null;
             let imageUrls: string[] = [];
+            const storagePaths: string[] = [];
 
             /*
              * VIDEO EDIT
              */
 
             if (category === "video-edit") {
-                // FULL VIDEO — OPTIONAL
-                if (videoFile) {
-                    const safeVideoName = videoFile.name.replace(
-                        /[^a-zA-Z0-9.-]/g,
-                        "-"
-                    );
-
-                    const videoPath =
-                        `videos/${timestamp}-${safeVideoName}`;
-
-                    const { error: videoError } =
-                        await supabase.storage
-                            .from("aruu")
-                            .upload(videoPath, videoFile, {
-                                cacheControl: "3600",
-                                upsert: false,
-                            });
-
-                    if (videoError) {
-                        throw new Error(
-                            `Full video upload failed: ${videoError.message}`
-                        );
-                    }
-
-                    const { data: videoData } =
-                        supabase.storage
-                            .from("aruu")
-                            .getPublicUrl(videoPath);
-
-                    videoUrl = videoData.publicUrl;
-                }
-
                 // PREVIEW VIDEO — REQUIRED
                 if (previewVideoFile) {
                     const safePreviewName =
@@ -230,6 +178,7 @@ export default function NewProjectPage() {
                             .getPublicUrl(previewPath);
 
                     previewUrl = previewData.publicUrl;
+                    storagePaths.push(previewPath);
                 }
             }
 
@@ -273,11 +222,44 @@ export default function NewProjectPage() {
                             .getPublicUrl(imagePath);
 
                     imageUrls.push(imageData.publicUrl);
+                    storagePaths.push(imagePath);
                 }
 
                 // First image acts as the project thumbnail
                 previewUrl = imageUrls[0] || null;
             }
+
+            /*
+             * AUTOMATIC POSITION
+             *
+             * Each category has its own ordering:
+             *
+             * video-edit: 0, 1, 2, 3...
+             * design:     0, 1, 2, 3...
+             */
+            const {
+                data: lastProject,
+                error: positionError,
+            } = await supabase
+                .from("projects")
+                .select("position")
+                .eq("category", category)
+                .order("position", {
+                    ascending: false,
+                })
+                .limit(1)
+                .maybeSingle();
+
+            if (positionError) {
+                throw new Error(
+                    `Could not determine project position: ${positionError.message}`
+                );
+            }
+
+            const nextPosition =
+                lastProject?.position != null
+                    ? lastProject.position + 1
+                    : 0;
 
             /*
              * CREATE PROJECT
@@ -297,12 +279,13 @@ export default function NewProjectPage() {
                         category,
                         aspect_ratio: aspectRatio,
 
-                        video_url: videoUrl,
+                        video_url: null,
                         thumbnail_url: previewUrl,
 
                         image_urls: imageUrls,
+                        storage_paths: storagePaths,
 
-                        position: Number(position) || 0,
+                        position: nextPosition,
                         published,
                         description: description || null,
                     });
@@ -543,104 +526,10 @@ export default function NewProjectPage() {
                         </h2>
 
                         <p className="mb-6 text-sm">
-                            Preview video is required. Full-quality video is
-                            optional for now.
+                            Preview video is required.
                         </p>
 
-                        <div className="grid gap-6 md:grid-cols-2">
-                            {/* FULL VIDEO */}
-
-                            <div>
-                                <label className="mb-2 block text-sm font-medium">
-                                    FULL VIDEO
-                                </label>
-
-                                <div
-                                    onDragOver={(e) => {
-                                        e.preventDefault();
-                                        setDraggingVideo(true);
-                                    }}
-                                    onDragLeave={() =>
-                                        setDraggingVideo(false)
-                                    }
-                                    onDrop={handleVideoDrop}
-                                    onClick={() =>
-                                        document
-                                            .getElementById(
-                                                "full-video-input"
-                                            )
-                                            ?.click()
-                                    }
-                                    className={`flex min-h-[240px] cursor-pointer flex-col items-center justify-center border border-dashed border-black p-6 text-center transition ${draggingVideo
-                                        ? "bg-black text-white"
-                                        : "bg-white"
-                                        }`}
-                                >
-                                    <input
-                                        id="full-video-input"
-                                        type="file"
-                                        accept="video/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const file =
-                                                e.target.files?.[0];
-
-                                            if (!file) return;
-
-                                            if (
-                                                !file.type.startsWith(
-                                                    "video/"
-                                                )
-                                            ) {
-                                                setStatus(
-                                                    "Please upload a video file."
-                                                );
-                                                return;
-                                            }
-
-                                            setVideoFile(file);
-                                            setStatus("");
-                                        }}
-                                    />
-
-                                    {videoFile ? (
-                                        <>
-                                            <p className="text-lg font-semibold">
-                                                {videoFile.name}
-                                            </p>
-
-                                            <p className="mt-2 text-sm">
-                                                {(
-                                                    videoFile.size /
-                                                    1024 /
-                                                    1024
-                                                ).toFixed(2)}{" "}
-                                                MB
-                                            </p>
-
-                                            <p className="mt-4 text-xs underline">
-                                                Click to replace
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <p className="text-lg font-semibold">
-                                                Drop full video here
-                                            </p>
-
-                                            <p className="mt-2 text-sm">
-                                                or click to browse
-                                            </p>
-
-                                            <p className="mt-4 text-xs">
-                                                Optional original /
-                                                high-quality video
-                                            </p>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
+                        <div className="grid gap-6">
                             {/* PREVIEW VIDEO */}
 
                             <div>
@@ -921,41 +810,22 @@ export default function NewProjectPage() {
                         Settings
                     </h2>
 
-                    <div className="grid gap-5 md:grid-cols-2">
-                        <div>
-                            <label className="mb-2 block text-sm font-medium">
-                                Position
-                            </label>
+                    <label className="flex w-fit cursor-pointer items-center gap-3 border border-black px-4 py-3">
+                        <input
+                            type="checkbox"
+                            checked={published}
+                            onChange={(e) =>
+                                setPublished(
+                                    e.target.checked
+                                )
+                            }
+                            className="h-4 w-4"
+                        />
 
-                            <input
-                                type="number"
-                                value={position}
-                                onChange={(e) =>
-                                    setPosition(e.target.value)
-                                }
-                                className="w-full border border-black px-4 py-3 outline-none"
-                            />
-                        </div>
-
-                        <div className="flex items-end">
-                            <label className="flex cursor-pointer items-center gap-3 border border-black px-4 py-3">
-                                <input
-                                    type="checkbox"
-                                    checked={published}
-                                    onChange={(e) =>
-                                        setPublished(
-                                            e.target.checked
-                                        )
-                                    }
-                                    className="h-4 w-4"
-                                />
-
-                                <span className="text-sm font-medium">
-                                    Publish immediately
-                                </span>
-                            </label>
-                        </div>
-                    </div>
+                        <span className="text-sm font-medium">
+                            Publish immediately
+                        </span>
+                    </label>
                 </section>
 
                 {/* STATUS */}

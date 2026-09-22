@@ -123,6 +123,45 @@ const mobileRatios = [
   "16/9",
 ];
 
+function parseAspectRatio(value: string | null | undefined) {
+  if (!value) return 16 / 9;
+
+  // Supabase entries may be stored as 9:16, 9/16, 9 x 16,
+  // or as a decimal ratio. Normalize all of them before layout.
+  const normalized = value.trim().toLowerCase().replace(/[x:]/g, "/");
+  const parts = normalized.split("/").map((part) => Number(part.trim()));
+
+  if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+    return parts[0] / parts[1];
+  }
+
+  const decimal = Number(normalized);
+  return decimal > 0 ? decimal : 16 / 9;
+}
+
+function getDynamicDesktopPlacement(
+  project: Project,
+  viewportWidth: number
+) {
+  const ratio = parseAspectRatio(project.aspect_ratio);
+  const isPortrait = ratio < 1;
+  const columnSpan = isPortrait ? 1 : 2;
+  const gridWidth = Math.min(viewportWidth || 1920, 1920);
+  const columnWidth = gridWidth / 5;
+  const rowUnit = gridWidth / 180;
+  const mediaWidth = columnWidth * columnSpan;
+  const mediaHeight = mediaWidth / ratio;
+  const rowSpan = Math.max(
+    1,
+    Math.ceil((mediaHeight + 1) / (rowUnit + 1))
+  );
+
+  return {
+    gridColumn: `span ${columnSpan}`,
+    gridRow: `span ${rowSpan}`,
+  };
+}
+
 /*
  * ============================================================
  * PAGE
@@ -132,6 +171,7 @@ const mobileRatios = [
 export default function VideoEditsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewportWidth, setViewportWidth] = useState(0);
 
   const [selectedProject, setSelectedProject] =
     useState<Project | null>(null);
@@ -411,6 +451,19 @@ export default function VideoEditsPage() {
    * LOAD PROJECTS
    * ============================================================
    */
+
+  useEffect(() => {
+    function syncViewportWidth() {
+      setViewportWidth(window.innerWidth);
+    }
+
+    syncViewportWidth();
+    window.addEventListener("resize", syncViewportWidth);
+
+    return () => {
+      window.removeEventListener("resize", syncViewportWidth);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadProjects() {
@@ -1290,7 +1343,7 @@ export default function VideoEditsPage() {
                 "calc(min(100vw, 1920px) / 180)",
               gap: "1px",
               backgroundColor:
-                "var(--foreground)",
+                "var(--background)",
             }}
           >
             {tiles.map(
@@ -1373,13 +1426,77 @@ export default function VideoEditsPage() {
                 );
               }
             )}
+
+            {/* ======================================================
+              DYNAMIC DESKTOP PROJECTS
+
+              Existing positions above remain exactly as designed.
+              Every later project is auto-placed into the next open
+              one- or two-unit slot and receives a row span derived
+              from its own aspect ratio.
+          ====================================================== */}
+            {projects
+              .filter(
+                (project) =>
+                  !tiles.some(
+                    (tile) => tile.position === project.position
+                  )
+              )
+              .map((project) => {
+                const isSelected =
+                  selectedProject?.id === project.id &&
+                  animationPhase !== "closed";
+                const placement = getDynamicDesktopPlacement(
+                  project,
+                  viewportWidth
+                );
+
+                return (
+                  <div
+                    key={`dynamic-desktop-${project.id}`}
+                    className="relative overflow-hidden bg-background"
+                    style={{
+                      ...placement,
+                      aspectRatio: parseAspectRatio(project.aspect_ratio),
+                    }}
+                  >
+                    {project.thumbnail_url && (
+                      <button
+                        type="button"
+                        className="group absolute inset-0 block h-full w-full overflow-hidden bg-background"
+                        onClick={(event) => {
+                          const video =
+                            event.currentTarget.querySelector("video");
+                          openProject(project, video);
+                        }}
+                      >
+                        <motion.video
+                          ref={(el) => {
+                            desktopTileRefs.current[project.id] = el;
+                          }}
+                          src={project.thumbnail_url}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                          animate={{ opacity: isSelected ? 0 : 1 }}
+                          transition={{ duration: 0 }}
+                          className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                          draggable={false}
+                        />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
 
           {/* ======================================================
               MOBILE GRID
           ====================================================== */}
 
-          <div className="flex flex-col gap-px bg-foreground md:hidden">
+          <div className="flex flex-col gap-px bg-background md:hidden">
             {mobileRatios.map(
               (
                 ratio,
@@ -1459,6 +1576,62 @@ export default function VideoEditsPage() {
                 );
               }
             )}
+          </div>
+
+          {/* ======================================================
+              DYNAMIC MOBILE PROJECTS
+          ====================================================== */}
+          <div className="flex flex-col gap-px bg-foreground md:hidden">
+            {projects
+              .filter(
+                (project) =>
+                  !tiles.some(
+                    (tile) => tile.position === project.position
+                  )
+              )
+              .map((project) => {
+                const isSelected =
+                  selectedProject?.id === project.id &&
+                  animationPhase !== "closed";
+
+                return (
+                  <div
+                    key={`dynamic-mobile-${project.id}`}
+                    className="relative w-full overflow-hidden bg-background"
+                    style={{
+                      aspectRatio: parseAspectRatio(project.aspect_ratio),
+                    }}
+                  >
+                    {project.thumbnail_url && (
+                      <button
+                        type="button"
+                        className="group absolute inset-0 block h-full w-full overflow-hidden bg-background"
+                        onClick={(event) => {
+                          const video =
+                            event.currentTarget.querySelector("video");
+                          openProject(project, video);
+                        }}
+                      >
+                        <motion.video
+                          ref={(el) => {
+                            mobileTileRefs.current[project.id] = el;
+                          }}
+                          src={project.thumbnail_url}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                          animate={{ opacity: isSelected ? 0 : 1 }}
+                          transition={{ duration: 0 }}
+                          className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                          draggable={false}
+                        />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </motion.div>
       </div>
