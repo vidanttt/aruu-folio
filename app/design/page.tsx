@@ -40,6 +40,13 @@ type Rect = {
   width: number;
   height: number;
 };
+type ImageDimensionMap = Record<
+  number,
+  {
+    width: number;
+    height: number;
+  }
+>;
 
 type AnimationPhase =
   | "closed"
@@ -101,59 +108,113 @@ function getHeaderHeight() {
  * Vertical sizes can vary independently.
  */
 
-const baseTiles = [
-  {
-    col: "1 / 2",
-    row: "1 / 55",
-  },
-  {
-    col: "2 / 4",
-    row: "1 / 55",
-  },
-  {
-    col: "4 / 6",
-    row: "1 / 42",
-  },
-  {
-    col: "1 / 2",
-    row: "55 / 109",
-  },
-  {
-    col: "2 / 4",
-    row: "55 / 82",
-  },
-  {
-    col: "4 / 5",
-    row: "42 / 96",
-  },
-  {
-    col: "5 / 6",
-    row: "42 / 96",
-  },
-];
+/*
+ * ============================================================
+ * NATURAL IMAGE -> GRID UNITS
+ * ============================================================
+ *
+ * The gallery keeps a 5-column unit grid. One grid unit is
+ * square, so:
+ *
+ *   1 x 1 = square artwork
+ *   2 x 1 = landscape artwork
+ *   1 x 2 = portrait artwork
+ *
+ * We only use the uploaded image dimensions to choose the
+ * closest shape. The stored aspect_ratio field is ignored.
+ */
 
-function getDynamicTile(index: number) {
-  if (index < baseTiles.length) {
-    return baseTiles[index];
+// const GRID_COLUMNS = 5;
+
+function getTileSpan(ratio: number) {
+  // Keep the editorial rule: a landscape tile gets two
+  // horizontal units, while square/portrait artwork gets one.
+  return ratio > 1 ? 2 : 1;
+}
+
+function getImageRatio(
+  dimensions: { width: number; height: number } | undefined
+) {
+  if (!dimensions?.width || !dimensions?.height) return 1;
+  return dimensions.width / dimensions.height;
+}
+
+type ImageTilePlacement = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+function buildImageMasonry(
+  projects: Project[],
+  dimensions: ImageDimensionMap,
+  containerWidth: number
+): Record<number, ImageTilePlacement> {
+  const placements: Record<number, ImageTilePlacement> = {};
+  if (!containerWidth) return placements;
+
+  const columnWidth = containerWidth / 5;
+  const placed: Array<{
+    columns: [number, number];
+    bottom: number;
+  }> = [];
+
+  for (const project of projects) {
+    const ratio = Math.max(
+      0.01,
+      getImageRatio(dimensions[project.id])
+    );
+    const columnSpan = getTileSpan(ratio);
+    const width = columnWidth * columnSpan;
+    const height = width / ratio;
+
+    let bestColumn = 0;
+    let bestTop = Number.POSITIVE_INFINITY;
+
+    for (
+      let startColumn = 0;
+      startColumn <= 5 - columnSpan;
+      startColumn += 1
+    ) {
+      let top = 0;
+
+      for (const previous of placed) {
+        const overlaps =
+          startColumn < previous.columns[1] &&
+          startColumn + columnSpan > previous.columns[0];
+
+        if (overlaps) {
+          top = Math.max(top, previous.bottom);
+        }
+      }
+
+      if (
+        top < bestTop ||
+        (top === bestTop && startColumn < bestColumn)
+      ) {
+        bestTop = top;
+        bestColumn = startColumn;
+      }
+    }
+
+    placements[project.id] = {
+      left: bestColumn * columnWidth,
+      top: bestTop,
+      width,
+      height,
+    };
+
+    placed.push({
+      columns: [
+        bestColumn,
+        bestColumn + columnSpan,
+      ],
+      bottom: bestTop + height,
+    });
   }
 
-  /*
-   * After the original 7-tile composition is filled, keep adding
-   * projects automatically instead of requiring another hard-coded
-   * position. New projects are placed in two-column blocks.
-   */
-  const extraIndex = index - baseTiles.length;
-  const rowStart = 109 + Math.floor(extraIndex / 2) * 54;
-
-  return extraIndex % 2 === 0
-    ? {
-      col: "1 / 3",
-      row: `${rowStart} / ${rowStart + 54}`,
-    }
-    : {
-      col: "3 / 6",
-      row: `${rowStart} / ${rowStart + 54}`,
-    };
+  return placements;
 }
 
 function getProjectImages(project: Project) {
@@ -223,6 +284,12 @@ export default function DesignPage() {
 
   const [loading, setLoading] =
     useState(true);
+
+  const [imageDimensions, setImageDimensions] =
+    useState<ImageDimensionMap>({});
+
+  const [desktopGridWidth, setDesktopGridWidth] =
+    useState(0);
 
   const [selectedProject, setSelectedProject] =
     useState<Project | null>(null);
@@ -597,8 +664,70 @@ export default function DesignPage() {
   }, []);
 
   /*
+   * Read the real dimensions of each project's first artwork.
+   * This is frontend-only for now — nothing is written back to
+   * Supabase.
+   */
+  useEffect(() => {
+    if (projects.length === 0) return;
+
+    let cancelled = false;
+
+    projects.forEach((project) => {
+      const imageUrl = getProjectImages(project)[0];
+      if (!imageUrl) return;
+
+      const image = new Image();
+
+      image.onload = () => {
+        if (cancelled) return;
+
+        setImageDimensions((current) => ({
+          ...current,
+          [project.id]: {
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+          },
+        }));
+      };
+
+      image.src = imageUrl;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projects]);
+
+  /*
    * Automatically open project if ?project=<id> is in URL on initial load
    */
+  useEffect(() => {
+    function syncDesktopGridWidth() {
+      if (window.innerWidth < 768) {
+        setDesktopGridWidth(0);
+        return;
+      }
+
+      setDesktopGridWidth(
+        Math.min(window.innerWidth, 1920)
+      );
+    }
+
+    syncDesktopGridWidth();
+    window.addEventListener(
+      "resize",
+      syncDesktopGridWidth
+    );
+
+    return () => {
+      window.removeEventListener(
+        "resize",
+        syncDesktopGridWidth
+      );
+    };
+  }, []);
+
   useEffect(() => {
     if (initialDeepLinkHandled.current || projects.length === 0) return;
     initialDeepLinkHandled.current = true;
@@ -678,16 +807,8 @@ export default function DesignPage() {
     const viewportHeight =
       window.innerHeight;
 
-    /*
-     * Header height.
-     *
-     * Sidebar begins directly underneath it.
-     */
     const headerHeight = getHeaderHeight();
 
-    /*
-     * Sidebar width.
-     */
     const panelWidth =
       viewportWidth < 768
         ? Math.min(
@@ -702,12 +823,7 @@ export default function DesignPage() {
           380
         );
 
-    /*
-     * Artwork area begins to the right
-     * of the sidebar and underneath header.
-     */
     const contentLeft = panelWidth;
-
     const contentTop = headerHeight;
 
     const contentWidth =
@@ -716,9 +832,6 @@ export default function DesignPage() {
     const contentHeight =
       viewportHeight - contentTop;
 
-    /*
-     * Breathing room.
-     */
     const paddingX =
       viewportWidth < 768
         ? 20
@@ -730,22 +843,15 @@ export default function DesignPage() {
         : 40;
 
     const area: Rect = {
-      left:
-        contentLeft + paddingX,
-
-      top:
-        contentTop + paddingY,
-
+      left: contentLeft + paddingX,
+      top: contentTop + paddingY,
       width: Math.max(
         1,
-        contentWidth -
-        paddingX * 2
+        contentWidth - paddingX * 2
       ),
-
       height: Math.max(
         1,
-        contentHeight -
-        paddingY * 2
+        contentHeight - paddingY * 2
       ),
     };
 
@@ -1026,15 +1132,6 @@ export default function DesignPage() {
           image.naturalHeight
         );
 
-      /*
-       * Motion values pick up the current
-       * in-progress value automatically, so
-       * this smoothly retargets even if a
-       * previous animation (open OR close) was
-       * still mid-flight — no two-frame wait
-       * needed like the old initial/animate
-       * approach required.
-       */
       animateArtworkRectTo(
         nextRect,
         OPEN_DURATION
@@ -1105,11 +1202,14 @@ export default function DesignPage() {
       const image = new Image();
 
       image.onload = () => {
-        animateArtworkRectTo(
+        const nextRect =
           calculateTargetRect(
             image.naturalWidth,
             image.naturalHeight
-          ),
+          );
+
+        animateArtworkRectTo(
+          nextRect,
           0.3
         );
       };
@@ -1151,12 +1251,20 @@ export default function DesignPage() {
         return;
       }
 
-      if (event.key === "ArrowLeft") {
+      if (
+        event.key === "ArrowLeft" ||
+        event.code === "ArrowLeft"
+      ) {
+        event.preventDefault();
         showPreviousImage();
         return;
       }
 
-      if (event.key === "ArrowRight") {
+      if (
+        event.key === "ArrowRight" ||
+        event.code === "ArrowRight"
+      ) {
+        event.preventDefault();
         showNextImage();
       }
     }
@@ -1266,195 +1374,150 @@ export default function DesignPage() {
             DESKTOP GRID
         ====================================================== */}
 
-        <div className="hidden w-full md:block">
-          <div
-            className="mx-auto grid box-border w-full"
-            style={{
-              maxWidth: "1920px",
+        {(() => {
+          const orderedProjects = projects
+            .slice()
+            .sort((a, b) => a.position - b.position);
 
-              gridTemplateColumns:
-                "repeat(5, 1fr)",
+          const placements = buildImageMasonry(
+            orderedProjects,
+            imageDimensions,
+            desktopGridWidth
+          );
 
-              gridAutoRows:
-                "calc(min(100vw, 1920px) / 180)",
+          const gridHeight = orderedProjects.reduce(
+            (max, project) => {
+              const placement = placements[project.id];
+              return Math.max(
+                max,
+                placement
+                  ? placement.top + placement.height
+                  : 0
+              );
+            },
+            0
+          );
 
-              borderTop:
-                "1px solid #000",
+          return (
+            <div className="hidden w-full md:block">
+              <div
+                className="relative mx-auto box-border w-full"
+                style={{
+                  maxWidth: "1920px",
+                  height: gridHeight,
+                }}
+              >
+                {orderedProjects.map((project) => {
+                  const image =
+                    getProjectImages(project)[0] || null;
+                  const placement =
+                    placements[project.id];
 
-              borderLeft:
-                "1px solid #000",
-            }}
-          >
-            {projects
-              .slice()
-              .sort((a, b) => a.position - b.position)
-              .map((project, index) => {
-                const tile = getDynamicTile(index);
+                  if (!image || !placement) return null;
 
-                const images = getProjectImages(project);
+                  const isSelectedTile =
+                    selectedProject?.id === project.id &&
+                    animationPhase !== "closed";
 
-                const image =
-                  images[0] || null;
-
-                /*
-                 * Hide ONLY the original image
-                 * that is currently being animated.
-                 *
-                 * The tile itself stays WHITE.
-                 *
-                 * This prevents the black rectangle.
-                 */
-                const isSelectedTile =
-                  selectedProject?.id === project?.id &&
-                  animationPhase !== "closed";
-
-                return (
-                  <div
-                    key={project.id}
-                    className="relative overflow-hidden border-b border-r border-black bg-white"
-                    style={{
-                      gridColumn: tile.col,
-                      gridRow: tile.row,
-                    }}
-                  >
-                    {project && image ? (
+                  return (
+                    <div
+                      key={project.id}
+                      className="absolute box-border overflow-hidden border border-black bg-white"
+                      style={{
+                        left: placement.left,
+                        top: placement.top,
+                        width: placement.width,
+                        height: placement.height,
+                      }}
+                    >
                       <button
                         type="button"
                         className="group absolute inset-0 block h-full w-full overflow-hidden bg-white"
                         onClick={(event) => {
                           const img =
-                            event.currentTarget.querySelector(
-                              "img"
-                            );
-
+                            event.currentTarget.querySelector("img");
                           if (!img) return;
-
-                          openProject(
-                            project,
-                            img
-                          );
+                          openProject(project, img);
                         }}
                       >
                         <motion.img
                           src={image}
-                          alt={
-                            project.name
-                          }
+                          alt={project.name}
                           ref={(el) => {
-                            desktopTileRefs.current[
-                              project.id
-                            ] = el;
+                            desktopTileRefs.current[project.id] = el;
                           }}
                           animate={{
-                            opacity:
-                              isSelectedTile
-                                ? 0
-                                : 1,
+                            opacity: isSelectedTile ? 0 : 1,
                           }}
-                          transition={{
-                            duration: 0,
-                          }}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                          transition={{ duration: 0 }}
+                          className="h-full w-full object-contain transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
                           draggable={false}
                         />
                       </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-          </div>
-        </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ======================================================
             MOBILE GRID
         ====================================================== */}
 
         <div className="block w-full md:hidden">
-          <div
-            className="grid w-full"
-            style={{
-              gridTemplateColumns:
-                "repeat(2, 1fr)",
+          <div className="grid w-full gap-0">
+            {projects.map((project) => {
+              const image =
+                getProjectImages(project)[0] || null;
 
-              gridAutoRows:
-                "calc(100vw / 20)",
+              if (!image) return null;
 
-              borderTop:
-                "1px solid #000",
+              const dimensions =
+                imageDimensions[project.id];
 
-              borderLeft:
-                "1px solid #000",
-            }}
-          >
-            {projects.map(
-              (project) => {
-                const images =
-                  getProjectImages(
-                    project
-                  );
+              const isSelectedTile =
+                selectedProject?.id === project.id &&
+                animationPhase !== "closed";
 
-                const image =
-                  images[0] || null;
-
-                if (!image) {
-                  return null;
-                }
-
-                const isSelectedTile =
-                  selectedProject?.id === project.id &&
-                  animationPhase !== "closed";
-
-                return (
-                  <div
-                    key={project.id}
-                    className="relative aspect-square overflow-hidden border-b border-r border-black"
+              return (
+                <div
+                  key={project.id}
+                  className="relative box-border w-full overflow-hidden border border-black bg-white"
+                  style={{
+                    aspectRatio: dimensions
+                      ? `${dimensions.width} / ${dimensions.height}`
+                      : "1 / 1",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="group absolute inset-0 h-full w-full overflow-hidden bg-white"
+                    onClick={(event) => {
+                      const img =
+                        event.currentTarget.querySelector("img");
+                      if (!img) return;
+                      openProject(project, img);
+                    }}
                   >
-                    <button
-                      type="button"
-                      className="group absolute inset-0 h-full w-full overflow-hidden bg-white"
-                      onClick={(
-                        event
-                      ) => {
-                        const img =
-                          event.currentTarget.querySelector(
-                            "img"
-                          );
-
-                        if (!img) return;
-
-                        openProject(
-                          project,
-                          img
-                        );
+                    <motion.img
+                      src={image}
+                      alt={project.name}
+                      ref={(el) => {
+                        mobileTileRefs.current[project.id] = el;
                       }}
-                    >
-                      <motion.img
-                        src={image}
-                        alt={
-                          project.name
-                        }
-                        ref={(el) => {
-                          mobileTileRefs.current[
-                            project.id
-                          ] = el;
-                        }}
-                        animate={{
-                          opacity:
-                            isSelectedTile
-                              ? 0
-                              : 1,
-                        }}
-                        transition={{
-                          duration: 0,
-                        }}
-                        className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
-                        draggable={false}
-                      />
-                    </button>
-                  </div>
-                );
-              }
-            )}
+                      animate={{
+                        opacity: isSelectedTile ? 0 : 1,
+                      }}
+                      transition={{ duration: 0 }}
+                      className="h-full w-full object-contain transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                      draggable={false}
+                    />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </motion.div>
