@@ -14,6 +14,7 @@ import {
   type MouseEvent,
 } from "react";
 
+import Footer from "../components/Footer";
 import { createClient } from "@/lib/supabase/client";
 
 type Project = {
@@ -297,6 +298,13 @@ export default function DesignPage() {
   const [selectedImageIndex, setSelectedImageIndex] =
     useState(0);
 
+  // Remembers the image currently shown in each project tile.
+  const [gridImageIndices, setGridImageIndices] =
+    useState<Record<number, number>>({});
+
+  const [imageDirection, setImageDirection] =
+    useState<1 | -1>(1);
+
   const [copied, setCopied] =
     useState(false);
 
@@ -506,16 +514,13 @@ export default function DesignPage() {
     }
   }
 
-  function getSafeCloseTarget(
-    liveTarget: Rect
+  function getLiveCloseTarget(
+    projectId: number,
+    fallback: Rect
   ): Rect {
-    return {
-      ...liveTarget,
-      top: Math.max(
-        getHeaderHeight(),
-        liveTarget.top
-      ),
-    };
+    // Match the Video Edits close animation exactly:
+    // always chase the real tile rectangle, with no header clamp.
+    return getLiveTileRect(projectId) || fallback;
   }
 
   function runCloseAnimation(
@@ -529,12 +534,11 @@ export default function DesignPage() {
     const startTime =
       performance.now();
 
-    // Capture the tile position at the exact moment the close
-    // starts. The animation follows the tile's subsequent
-    // movement 1:1, instead of only following a fraction of
-    // the scroll movement based on animation progress.
-    const initialTarget = getSafeCloseTarget(
-      getLiveTileRect(projectId) || startRect
+    // Match the Video Edits close animation: capture the exact
+    // live tile rectangle at the moment closing starts.
+    const initialTarget = getLiveCloseTarget(
+      projectId,
+      startRect
     );
 
     function frame(now: number) {
@@ -549,20 +553,12 @@ export default function DesignPage() {
       const eased =
         easeOutCubic(t);
 
-      /*
-       * Re-measured every frame —
-       * this is the scroll-follow.
-       *
-       * The top is clamped below the site header
-       * so scrolling during close can never make
-       * the artwork pass over the header.
-       */
-      const liveTarget =
-        getSafeCloseTarget(
-          getLiveTileRect(
-            projectId
-          ) || initialTarget
-        );
+      // Re-measure every frame so the artwork follows the exact
+      // live tile position while the page is moving, just like Video Edits.
+      const liveTarget = getLiveCloseTarget(
+        projectId,
+        initialTarget
+      );
 
       /*
        * Animate toward the original target, then add the exact
@@ -611,6 +607,14 @@ export default function DesignPage() {
           );
       } else {
         closeFrameRef.current = null;
+        // Guarantee the final flying frame and revealed tile share
+        // the exact same rectangle before the viewer unmounts.
+        setArtworkRectInstant(
+          getLiveCloseTarget(
+            projectId,
+            liveTarget
+          )
+        );
         onDone();
       }
     }
@@ -917,6 +921,11 @@ export default function DesignPage() {
       ? initialImageIndex
       : 0;
     setSelectedImageIndex(safeIndex);
+    setImageDirection(1);
+    setGridImageIndices((current) => ({
+      ...current,
+      [project.id]: safeIndex,
+    }));
 
     document.body.style.overflow = "hidden";
     setAnimationPhase("opening");
@@ -952,6 +961,64 @@ export default function DesignPage() {
     }
 
     beginOpenProject(project, imageElement, initialImageIndex);
+  }
+
+  /*
+   * ============================================================
+   * PROJECT NAVIGATION
+   * Top sidebar arrows and keyboard arrows move between projects.
+   * The image arrows remain the only controls for sub-images.
+   * ============================================================
+   */
+
+  function navigateProject(direction: -1 | 1) {
+    if (
+      !selectedProject ||
+      projects.length < 2 ||
+      animationPhase === "closing"
+    ) {
+      return;
+    }
+
+    const currentIndex = projects.findIndex(
+      (project) => project.id === selectedProject.id
+    );
+
+    if (currentIndex < 0) return;
+
+    const nextIndex =
+      (currentIndex + direction + projects.length) % projects.length;
+    const nextProject = projects[nextIndex];
+
+    if (!nextProject) return;
+
+    const nextImages = getProjectImages(nextProject);
+    const nextImageIndex = Math.min(
+      gridImageIndices[nextProject.id] ?? 0,
+      Math.max(0, nextImages.length - 1)
+    );
+
+    stopArtworkAnimation();
+    setCopied(false);
+    setImageDirection(direction);
+    setSelectedProject(nextProject);
+    setSelectedImageIndex(nextImageIndex);
+    setGridImageIndices((current) => ({
+      ...current,
+      [nextProject.id]: nextImageIndex,
+    }));
+    setAnimationPhase("opening");
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("project", String(nextProject.id));
+      if (nextImageIndex > 0) {
+        url.searchParams.set("img", String(nextImageIndex + 1));
+      } else {
+        url.searchParams.delete("img");
+      }
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
   }
 
   /*
@@ -1053,7 +1120,12 @@ export default function DesignPage() {
         ? images.length - 1
         : selectedImageIndex - 1;
 
+    setImageDirection(-1);
     setSelectedImageIndex(nextIndex);
+    setGridImageIndices((current) => ({
+      ...current,
+      [selectedProject.id]: nextIndex,
+    }));
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1081,7 +1153,12 @@ export default function DesignPage() {
         ? 0
         : selectedImageIndex + 1;
 
+    setImageDirection(1);
     setSelectedImageIndex(nextIndex);
+    setGridImageIndices((current) => ({
+      ...current,
+      [selectedProject.id]: nextIndex,
+    }));
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1256,7 +1333,7 @@ export default function DesignPage() {
         event.code === "ArrowLeft"
       ) {
         event.preventDefault();
-        showPreviousImage();
+        navigateProject(-1);
         return;
       }
 
@@ -1265,7 +1342,7 @@ export default function DesignPage() {
         event.code === "ArrowRight"
       ) {
         event.preventDefault();
-        showNextImage();
+        navigateProject(1);
       }
     }
 
@@ -1408,21 +1485,34 @@ export default function DesignPage() {
                 }}
               >
                 {orderedProjects.map((project) => {
-                  const image =
-                    getProjectImages(project)[0] || null;
-                  const placement =
-                    placements[project.id];
+                  const images = getProjectImages(project);
+                  const gridImageIndex = Math.min(
+                    gridImageIndices[project.id] ?? 0,
+                    Math.max(0, images.length - 1)
+                  );
+                  const image = images[gridImageIndex] || null;
+                  const placement = placements[project.id];
 
                   if (!image || !placement) return null;
 
                   const isSelectedTile =
                     selectedProject?.id === project.id &&
                     animationPhase !== "closed";
+                  const hasMultipleImages = images.length > 1;
+
+                  const changeGridImage = (direction: -1 | 1) => {
+                    if (!hasMultipleImages) return;
+                    const currentIndex = gridImageIndices[project.id] ?? 0;
+                    const nextIndex = direction === -1
+                      ? currentIndex === 0 ? images.length - 1 : currentIndex - 1
+                      : currentIndex === images.length - 1 ? 0 : currentIndex + 1;
+                    setGridImageIndices((current) => ({ ...current, [project.id]: nextIndex }));
+                  };
 
                   return (
                     <div
                       key={project.id}
-                      className="absolute box-border overflow-hidden border border-black bg-white"
+                      className="group absolute box-border overflow-hidden border border-black bg-white"
                       style={{
                         left: placement.left,
                         top: placement.top,
@@ -1432,28 +1522,46 @@ export default function DesignPage() {
                     >
                       <button
                         type="button"
-                        className="group absolute inset-0 block h-full w-full overflow-hidden bg-white"
+                        className="absolute inset-0 z-0 block h-full w-full overflow-hidden bg-white"
                         onClick={(event) => {
-                          const img =
-                            event.currentTarget.querySelector("img");
+                          const img = event.currentTarget.querySelector("img");
                           if (!img) return;
-                          openProject(project, img);
+                          openProject(project, img, gridImageIndex);
                         }}
                       >
                         <motion.img
                           src={image}
                           alt={project.name}
-                          ref={(el) => {
-                            desktopTileRefs.current[project.id] = el;
-                          }}
-                          animate={{
-                            opacity: isSelectedTile ? 0 : 1,
-                          }}
+                          ref={(el) => { desktopTileRefs.current[project.id] = el; }}
+                          animate={{ opacity: isSelectedTile ? 0 : 1 }}
                           transition={{ duration: 0 }}
                           className="h-full w-full object-contain transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
                           draggable={false}
                         />
                       </button>
+
+                      {hasMultipleImages && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Previous image"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => { event.stopPropagation(); changeGridImage(-1); }}
+                            className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                          >
+                            <span className="-mt-px">←</span>
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Next image"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => { event.stopPropagation(); changeGridImage(1); }}
+                            className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                          >
+                            <span className="-mt-px">→</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -1469,52 +1577,75 @@ export default function DesignPage() {
         <div className="block w-full md:hidden">
           <div className="grid w-full gap-0">
             {projects.map((project) => {
-              const image =
-                getProjectImages(project)[0] || null;
-
+              const images = getProjectImages(project);
+              const gridImageIndex = Math.min(
+                gridImageIndices[project.id] ?? 0,
+                Math.max(0, images.length - 1)
+              );
+              const image = images[gridImageIndex] || null;
               if (!image) return null;
 
-              const dimensions =
-                imageDimensions[project.id];
+              const dimensions = imageDimensions[project.id];
+              const isSelectedTile = selectedProject?.id === project.id && animationPhase !== "closed";
+              const hasMultipleImages = images.length > 1;
 
-              const isSelectedTile =
-                selectedProject?.id === project.id &&
-                animationPhase !== "closed";
+              const changeGridImage = (direction: -1 | 1) => {
+                if (!hasMultipleImages) return;
+                const currentIndex = gridImageIndices[project.id] ?? 0;
+                const nextIndex = direction === -1
+                  ? currentIndex === 0 ? images.length - 1 : currentIndex - 1
+                  : currentIndex === images.length - 1 ? 0 : currentIndex + 1;
+                setGridImageIndices((current) => ({ ...current, [project.id]: nextIndex }));
+              };
 
               return (
                 <div
                   key={project.id}
-                  className="relative box-border w-full overflow-hidden border border-black bg-white"
-                  style={{
-                    aspectRatio: dimensions
-                      ? `${dimensions.width} / ${dimensions.height}`
-                      : "1 / 1",
-                  }}
+                  className="group relative box-border w-full overflow-hidden border border-black bg-white"
+                  style={{ aspectRatio: dimensions ? `${dimensions.width} / ${dimensions.height}` : "1 / 1" }}
                 >
                   <button
                     type="button"
-                    className="group absolute inset-0 h-full w-full overflow-hidden bg-white"
+                    className="absolute inset-0 z-0 h-full w-full overflow-hidden bg-white"
                     onClick={(event) => {
-                      const img =
-                        event.currentTarget.querySelector("img");
+                      const img = event.currentTarget.querySelector("img");
                       if (!img) return;
-                      openProject(project, img);
+                      openProject(project, img, gridImageIndex);
                     }}
                   >
                     <motion.img
                       src={image}
                       alt={project.name}
-                      ref={(el) => {
-                        mobileTileRefs.current[project.id] = el;
-                      }}
-                      animate={{
-                        opacity: isSelectedTile ? 0 : 1,
-                      }}
+                      ref={(el) => { mobileTileRefs.current[project.id] = el; }}
+                      animate={{ opacity: isSelectedTile ? 0 : 1 }}
                       transition={{ duration: 0 }}
-                      className="h-full w-full object-contain transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                      className="h-full w-full object-contain"
                       draggable={false}
                     />
                   </button>
+
+                  {hasMultipleImages && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Previous image"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => { event.stopPropagation(); changeGridImage(-1); }}
+                        className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                      >
+                        <span className="-mt-px">←</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next image"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => { event.stopPropagation(); changeGridImage(1); }}
+                        className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                      >
+                        <span className="-mt-px">→</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -1537,7 +1668,7 @@ export default function DesignPage() {
 
               <motion.div
                 key="viewer-click-layer"
-                className="fixed inset-0 z-[60]"
+                className="fixed inset-0 z-30"
                 initial={{
                   opacity: 0,
                 }}
@@ -1734,10 +1865,8 @@ export default function DesignPage() {
 
                     <button
                       type="button"
-                      onClick={
-                        showPreviousImage
-                      }
-                      aria-label="Previous image"
+                      onClick={() => navigateProject(-1)}
+                      aria-label="Previous project"
                       className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50"
                     >
                       ‹
@@ -1745,10 +1874,8 @@ export default function DesignPage() {
 
                     <button
                       type="button"
-                      onClick={
-                        showNextImage
-                      }
-                      aria-label="Next image"
+                      onClick={() => navigateProject(1)}
+                      aria-label="Next project"
                       className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50"
                     >
                       ›
@@ -1760,11 +1887,11 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-6">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       NAME
                     </div>
 
-                    <div className="mt-3 max-w-full font-['Degular'] text-[clamp(34px,4vw,56px)] font-semibold leading-[0.85] tracking-[-0.03em]">
+                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(34px,4vw,56px)] leading-[0.85] tracking-[-0.05em]">
                       {
                         selectedProject.name
                       }
@@ -1776,11 +1903,11 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SKILL
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {
                         selectedProject.skill ||
                         "—"
@@ -1793,11 +1920,11 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       KIND
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {
                         selectedProject.kind ||
                         "—"
@@ -1810,15 +1937,18 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SOFTWARE(S) USED
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
-                      {
-                        selectedProject.softwares ||
-                        "—"
-                      }
+                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.05em]">
+                      {selectedProject.softwares
+                        ? selectedProject.softwares.split(",").map((software, index) => (
+                          <span key={index} className="block">
+                            {software.trim()}
+                          </span>
+                        ))
+                        : "—"}
                     </div>
                   </div>
 
@@ -1827,11 +1957,11 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       FOR WHOM
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {selectedProject.client ? (
                         selectedProject.client_url ? (
                           <a
@@ -1856,11 +1986,11 @@ export default function DesignPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       WHEN
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {selectedProject.project_date
                         ? new Date(
                           selectedProject.project_date
@@ -1883,7 +2013,7 @@ export default function DesignPage() {
 
                   <div className="px-6 pt-5">
                     {selectedProject.description && (
-                      <p className="max-w-full font-['Degular'] text-[clamp(13px,1.15vw,16px)] font-medium leading-[1.4] tracking-[-0.01em]">
+                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em]">
                         {
                           selectedProject.description
                         }
@@ -1947,7 +2077,7 @@ export default function DesignPage() {
               ================================================== */}
 
               <motion.div
-                className="fixed z-[80] overflow-hidden"
+                className="group fixed z-40 overflow-hidden"
                 style={{
                   left: artLeft,
                   top: artTop,
@@ -1964,17 +2094,71 @@ export default function DesignPage() {
                 }}
               >
                 {selectedImages[selectedImageIndex] && (
-                  <motion.img
-                    src={selectedImages[selectedImageIndex]}
-                    alt={selectedProject.name}
-                    className="absolute inset-0 h-full w-full select-none object-contain"
-                    draggable={false}
-                  />
+                  <AnimatePresence
+                    initial={false}
+                    custom={imageDirection}
+                    mode="sync"
+                  >
+                    <motion.img
+                      key={`${selectedProject.id}-${selectedImageIndex}`}
+                      custom={imageDirection}
+                      src={selectedImages[selectedImageIndex]}
+                      alt={selectedProject.name}
+                      initial={{
+                        x: imageDirection * 40,
+                        opacity: 0,
+                      }}
+                      animate={{
+                        x: 0,
+                        opacity: 1,
+                      }}
+                      exit={{
+                        x: imageDirection * -40,
+                        opacity: 0,
+                      }}
+                      transition={{
+                        duration: 0.3,
+                        ease: EASE,
+                      }}
+                      className="absolute inset-0 h-full w-full select-none object-contain"
+                      draggable={false}
+                    />
+                  </AnimatePresence>
+                )}
+
+                {selectedImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Previous image"
+                      onClick={showPreviousImage}
+                      className="group/prev absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[26px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 focus-visible:opacity-100 md:left-4 md:opacity-0 md:group-hover:opacity-100"
+                    >
+                      <span className="-mt-px">←</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label="Next image"
+                      onClick={showNextImage}
+                      className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[26px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 focus-visible:opacity-100 md:right-4 md:opacity-0 md:group-hover:opacity-100"
+                    >
+                      <span className="-mt-px">→</span>
+                    </button>
+                  </>
                 )}
               </motion.div>
             </>
           )}
       </AnimatePresence>
+
+      {/* ========================================================
+          FOOTER
+      ======================================================== */}
+
+      <div className="mx-auto w-full max-w-[1920px] mt-30 border-t border-black">
+        <Footer borderTop={false} />
+      </div>
 
       {/* ========================================================
           LOADING

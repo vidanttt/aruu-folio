@@ -228,6 +228,15 @@ export default function VideoEditsPage() {
 
   const [copied, setCopied] = useState(false);
 
+  const viewerVideoRef =
+    useRef<HTMLVideoElement | null>(null);
+
+  const [viewerPlaying, setViewerPlaying] =
+    useState(true);
+
+  const [viewerMuted, setViewerMuted] =
+    useState(true);
+
   const copyTimeoutRef =
     useRef<NodeJS.Timeout | null>(null);
 
@@ -958,6 +967,9 @@ export default function VideoEditsPage() {
       project
     );
 
+    setViewerPlaying(true);
+    setViewerMuted(true);
+
     document.body.style.overflow =
       "hidden";
 
@@ -1637,7 +1649,7 @@ export default function VideoEditsPage() {
 
               <motion.div
                 key="viewer-click-layer"
-                className="fixed inset-0 z-[60]"
+                className="fixed inset-0 z-30"
                 initial={{
                   opacity: 0,
                 }}
@@ -1899,11 +1911,11 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-6">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       NAME
                     </div>
 
-                    <div className="mt-3 max-w-full font-['Degular'] text-[clamp(34px,4vw,56px)] font-semibold leading-[0.85] tracking-[-0.03em]">
+                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(34px,4vw,56px)] leading-[0.85] tracking-[-0.05em]">
                       {
                         selectedProject.name
                       }
@@ -1915,11 +1927,11 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SKILL
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {
                         selectedProject.skill ||
                         "—"
@@ -1932,11 +1944,11 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       KIND
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {
                         selectedProject.kind ||
                         "—"
@@ -1949,15 +1961,18 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SOFTWARE(S) USED
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
-                      {
-                        selectedProject.softwares ||
-                        "—"
-                      }
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                      {selectedProject.softwares
+                        ? selectedProject.softwares.split(",").map((software, index) => (
+                          <span key={index} className="block">
+                            {software.trim()}
+                          </span>
+                        ))
+                        : "—"}
                     </div>
                   </div>
 
@@ -1966,11 +1981,11 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       FOR WHOM
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {selectedProject.client ? (
                         selectedProject.client_url ? (
                           <a
@@ -1999,11 +2014,11 @@ export default function VideoEditsPage() {
                   ================================================= */}
 
                   <div className="border-b border-black px-6 py-5">
-                    <div className="font-['Degular'] text-[12px] leading-none tracking-[0.06em]">
+                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       WHEN
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.02em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
                       {selectedProject.project_date
                         ? new Date(
                           selectedProject.project_date
@@ -2026,7 +2041,7 @@ export default function VideoEditsPage() {
 
                   <div className="px-6 pt-5">
                     {selectedProject.description && (
-                      <p className="max-w-full font-['Degular'] text-[clamp(13px,1.15vw,16px)] font-medium leading-[1.4] tracking-[-0.01em]">
+                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em]">
                         {
                           selectedProject.description
                         }
@@ -2041,7 +2056,7 @@ export default function VideoEditsPage() {
               ================================================== */}
 
               <motion.div
-                className="fixed z-[80] overflow-hidden"
+                className="fixed z-40 overflow-hidden"
                 style={{
                   left: artLeft,
                   top: artTop,
@@ -2062,6 +2077,7 @@ export default function VideoEditsPage() {
                 }}
               >
                 <video
+                  ref={viewerVideoRef}
                   key={
                     selectedProject.id
                   }
@@ -2070,12 +2086,126 @@ export default function VideoEditsPage() {
                     ""
                   }
                   autoPlay
-                  muted
+                  muted={viewerMuted}
                   loop
                   playsInline
                   preload="auto"
+                  onPlay={() => setViewerPlaying(true)}
+                  onPause={() => setViewerPlaying(false)}
                   className="absolute inset-0 h-full w-full select-none object-cover"
                 />
+
+                <div className="absolute bottom-0 left-0 right-0 z-10 flex items-center gap-2 p-4">
+                  <button
+                    type="button"
+                    aria-label={
+                      viewerPlaying
+                        ? "Pause video"
+                        : "Play video"
+                    }
+                    onClick={() => {
+                      const video =
+                        viewerVideoRef.current;
+
+                      if (!video) return;
+
+                      if (video.paused) {
+                        void video.play();
+                      } else {
+                        video.pause();
+                      }
+                    }}
+                    className="flex h-9 w-9 items-center justify-center border border-white bg-black/70 text-white transition-opacity hover:opacity-70"
+                  >
+                    {viewerPlaying ? (
+                      <span className="flex gap-[3px]">
+                        <span className="h-3.5 w-[2px] bg-white" />
+                        <span className="h-3.5 w-[2px] bg-white" />
+                      </span>
+                    ) : (
+                      <span className="ml-0.5 block h-0 w-0 border-y-[7px] border-l-[10px] border-y-transparent border-l-white" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-label={
+                      viewerMuted
+                        ? "Unmute video"
+                        : "Mute video"
+                    }
+                    onClick={() => {
+                      const video =
+                        viewerVideoRef.current;
+
+                      if (!video) return;
+
+                      video.muted =
+                        !video.muted;
+
+                      setViewerMuted(
+                        video.muted
+                      );
+                    }}
+                    className="flex h-9 w-9 items-center justify-center border border-white bg-black/70 text-white transition-opacity hover:opacity-70"
+                  >
+                    {viewerMuted ? (
+                      <svg
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M4 9V15H8L13 19V5L8 9H4Z"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M17 9L21 15"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M21 9L17 15"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M4 9V15H8L13 19V5L8 9H4Z"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M17 9C18.3 10.3 18.3 13.7 17 15"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M19.5 6.5C22.8 9.8 22.8 14.2 19.5 17.5"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </motion.div>
             </>
           )}
@@ -2085,7 +2215,7 @@ export default function VideoEditsPage() {
           FOOTER
       ======================================================== */}
 
-      <div className="mx-auto w-full max-w-[1920px]">
+      <div className="mx-auto w-full max-w-[1920px] mt-30 border-t border-black">
         <Footer borderTop={false} />
       </div>
 

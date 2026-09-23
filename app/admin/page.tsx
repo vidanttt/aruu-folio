@@ -417,9 +417,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`py-4 text-sm font-semibold transition ${selectedCategory ===
-                                "video-edit"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            "video-edit"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         VIDEO EDITS
@@ -432,9 +432,9 @@ export default function AdminPage() {
                             )
                         }
                         className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory ===
-                                "design"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            "design"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         DESIGN
@@ -512,8 +512,8 @@ export default function AdminPage() {
                                             )
                                         }
                                         className={`border border-black px-4 py-2 text-sm ${project.published
-                                                ? "bg-black text-white"
-                                                : "bg-white text-black"
+                                            ? "bg-black text-white"
+                                            : "bg-white text-black"
                                             }`}
                                     >
                                         {project.published
