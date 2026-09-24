@@ -27,7 +27,6 @@ type Project = {
   client_url: string | null;
   project_date: string | null;
   category: string;
-  aspect_ratio: string;
   position: number;
   image_urls: string[] | null;
   thumbnail_url: string | null;
@@ -122,7 +121,7 @@ function getHeaderHeight() {
  *   1 x 2 = portrait artwork
  *
  * We only use the uploaded image dimensions to choose the
- * closest shape. The stored aspect_ratio field is ignored.
+ * closest shape based on the actual image dimensions.
  */
 
 // const GRID_COLUMNS = 5;
@@ -153,66 +152,211 @@ function buildImageMasonry(
   containerWidth: number
 ): Record<number, ImageTilePlacement> {
   const placements: Record<number, ImageTilePlacement> = {};
+  if (!containerWidth || projects.length === 0) return placements;
+
+  /*
+   * Desktop stays a strict 5-unit system.
+   *
+   * A portrait/square uses 1 unit and a landscape uses 2 units.
+   * The skyline is packed dynamically so a later portrait can drop
+   * into an open unit underneath a landscape instead of leaving a
+   * large rectangular hole.
+   *
+   * The five-unit width is never changed or stretched into a
+   * justified gallery. Only the vertical packing is dynamic.
+   */
+  const GRID_COLUMNS = 5;
+  const columnWidth = containerWidth / GRID_COLUMNS;
+  const skyline = Array.from({ length: GRID_COLUMNS }, () => 0);
+  const remaining = projects.map((project, index) => ({ project, index }));
+
+  while (remaining.length > 0) {
+    let best:
+      | {
+        remainingIndex: number;
+        startColumn: number;
+        top: number;
+        width: number;
+        height: number;
+        score: [number, number, number, number];
+      }
+      | null = null;
+
+    for (let candidateIndex = 0; candidateIndex < remaining.length; candidateIndex += 1) {
+      const project = remaining[candidateIndex].project;
+      const ratio = Math.max(0.01, getImageRatio(dimensions[project.id]));
+      const columnSpan = getTileSpan(ratio);
+      const width = columnWidth * columnSpan;
+      const height = width / ratio;
+
+      for (
+        let startColumn = 0;
+        startColumn <= GRID_COLUMNS - columnSpan;
+        startColumn += 1
+      ) {
+        const occupied = skyline.slice(
+          startColumn,
+          startColumn + columnSpan
+        );
+        const top = Math.max(...occupied);
+
+        const nextSkyline = [...skyline];
+        const bottom = top + height;
+
+        for (
+          let column = startColumn;
+          column < startColumn + columnSpan;
+          column += 1
+        ) {
+          nextSkyline[column] = bottom;
+        }
+
+        const newMax = Math.max(...nextSkyline);
+        const newMin = Math.min(...nextSkyline);
+        const spread = newMax - newMin;
+
+        // Prefer the lowest available pocket, then the placement that
+        // keeps the five-unit skyline flatter. Preserve DB order when
+        // two placements are effectively equivalent.
+        const score: [number, number, number, number] = [
+          top,
+          spread,
+          newMax,
+          remaining[candidateIndex].index,
+        ];
+
+        if (
+          !best ||
+          score[0] < best.score[0] ||
+          (score[0] === best.score[0] && score[1] < best.score[1]) ||
+          (score[0] === best.score[0] &&
+            score[1] === best.score[1] &&
+            score[2] < best.score[2]) ||
+          (score[0] === best.score[0] &&
+            score[1] === best.score[1] &&
+            score[2] === best.score[2] &&
+            score[3] < best.score[3])
+        ) {
+          best = {
+            remainingIndex: candidateIndex,
+            startColumn,
+            top,
+            width,
+            height,
+            score,
+          };
+        }
+      }
+    }
+
+    if (!best) break;
+
+    const chosen = remaining.splice(best.remainingIndex, 1)[0].project;
+
+    placements[chosen.id] = {
+      left: best.startColumn * columnWidth,
+      top: best.top,
+      width: best.width,
+      height: best.height,
+    };
+
+    const bottom = best.top + best.height;
+    const span = Math.round(best.width / columnWidth);
+
+    for (
+      let column = best.startColumn;
+      column < best.startColumn + span;
+      column += 1
+    ) {
+      skyline[column] = bottom;
+    }
+  }
+
+  return placements;
+}
+
+type MobileImageTilePlacement = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+function buildMobileImageMasonry(
+  projects: Project[],
+  dimensions: ImageDimensionMap,
+  containerWidth: number
+): Record<number, MobileImageTilePlacement> {
+  const placements: Record<number, MobileImageTilePlacement> = {};
+
   if (!containerWidth) return placements;
 
-  const columnWidth = containerWidth / 5;
-  const placed: Array<{
-    columns: [number, number];
-    bottom: number;
-  }> = [];
+  const columnWidth = containerWidth / 2;
+  let cursorY = 0;
 
-  for (const project of projects) {
+  // Mobile is intentionally a different packing system from desktop.
+  // Tall portraits are paired two-up. Everything else gets a full-width
+  // row. This keeps the gallery visually tight instead of producing
+  // the large holes that a generic two-column masonry can create when
+  // a single portrait sits beside a landscape image.
+  for (let index = 0; index < projects.length; index += 1) {
+    const project = projects[index];
     const ratio = Math.max(
       0.01,
       getImageRatio(dimensions[project.id])
     );
-    const columnSpan = getTileSpan(ratio);
-    const width = columnWidth * columnSpan;
-    const height = width / ratio;
 
-    let bestColumn = 0;
-    let bestTop = Number.POSITIVE_INFINITY;
+    // Only clearly tall portrait artwork is a half-width tile.
+    // Square / landscape artwork gets a full-width row.
+    const isPortrait = ratio < 0.82;
+    const nextProject = projects[index + 1];
+    const nextRatio = nextProject
+      ? Math.max(
+        0.01,
+        getImageRatio(dimensions[nextProject.id])
+      )
+      : 1;
+    const nextIsPortrait = Boolean(nextProject) && nextRatio < 0.82;
 
-    for (
-      let startColumn = 0;
-      startColumn <= 5 - columnSpan;
-      startColumn += 1
-    ) {
-      let top = 0;
+    if (isPortrait && nextIsPortrait) {
+      const firstWidth = columnWidth;
+      const secondWidth = columnWidth;
+      const firstHeight = firstWidth / ratio;
+      const secondHeight = secondWidth / nextRatio;
+      const rowHeight = Math.max(firstHeight, secondHeight);
 
-      for (const previous of placed) {
-        const overlaps =
-          startColumn < previous.columns[1] &&
-          startColumn + columnSpan > previous.columns[0];
+      placements[project.id] = {
+        left: 0,
+        top: cursorY,
+        width: firstWidth,
+        height: firstHeight,
+      };
 
-        if (overlaps) {
-          top = Math.max(top, previous.bottom);
-        }
-      }
+      placements[nextProject.id] = {
+        left: columnWidth,
+        top: cursorY,
+        width: secondWidth,
+        height: secondHeight,
+      };
 
-      if (
-        top < bestTop ||
-        (top === bestTop && startColumn < bestColumn)
-      ) {
-        bestTop = top;
-        bestColumn = startColumn;
-      }
+      cursorY += rowHeight;
+      index += 1;
+      continue;
     }
 
+    // A lone portrait is promoted to a full-width tile instead of
+    // leaving an empty half-row beside it.
+    const width = containerWidth;
+    const height = width / ratio;
+
     placements[project.id] = {
-      left: bestColumn * columnWidth,
-      top: bestTop,
+      left: 0,
+      top: cursorY,
       width,
       height,
     };
 
-    placed.push({
-      columns: [
-        bestColumn,
-        bestColumn + columnSpan,
-      ],
-      bottom: bestTop + height,
-    });
+    cursorY += height;
   }
 
   return placements;
@@ -290,6 +434,9 @@ export default function DesignPage() {
     useState<ImageDimensionMap>({});
 
   const [desktopGridWidth, setDesktopGridWidth] =
+    useState(0);
+
+  const [mobileGridWidth, setMobileGridWidth] =
     useState(0);
 
   const [selectedProject, setSelectedProject] =
@@ -638,7 +785,7 @@ export default function DesignPage() {
         await supabase
           .from("projects")
           .select(
-            "id, name, skill, kind, softwares, client, client_url, project_date, category, aspect_ratio, position, image_urls, thumbnail_url, description, published"
+            "id, name, skill, kind, softwares, client, client_url, project_date, category, position, image_urls, thumbnail_url, description, published"
           )
           .eq("category", "design")
           .eq("published", true)
@@ -707,27 +854,29 @@ export default function DesignPage() {
    * Automatically open project if ?project=<id> is in URL on initial load
    */
   useEffect(() => {
-    function syncDesktopGridWidth() {
+    function syncGridWidths() {
       if (window.innerWidth < 768) {
         setDesktopGridWidth(0);
+        setMobileGridWidth(window.innerWidth);
         return;
       }
 
       setDesktopGridWidth(
         Math.min(window.innerWidth, 1920)
       );
+      setMobileGridWidth(0);
     }
 
-    syncDesktopGridWidth();
+    syncGridWidths();
     window.addEventListener(
       "resize",
-      syncDesktopGridWidth
+      syncGridWidths
     );
 
     return () => {
       window.removeEventListener(
         "resize",
-        syncDesktopGridWidth
+        syncGridWidths
       );
     };
   }, []);
@@ -815,10 +964,7 @@ export default function DesignPage() {
 
     const panelWidth =
       viewportWidth < 768
-        ? Math.min(
-          viewportWidth * 0.82,
-          420
-        )
+        ? viewportWidth * 0.5
         : Math.min(
           Math.max(
             viewportWidth * 0.20,
@@ -838,12 +984,12 @@ export default function DesignPage() {
 
     const paddingX =
       viewportWidth < 768
-        ? 20
+        ? 8
         : 48;
 
     const paddingY =
       viewportWidth < 768
-        ? 24
+        ? 12
         : 40;
 
     const area: Rect = {
@@ -1430,12 +1576,13 @@ export default function DesignPage() {
       : OPEN_DURATION;
 
   return (
-    <main className="relative min-h-screen w-full bg-white text-black">
+    <main className="relative flex min-h-screen w-full flex-col bg-white text-black">
       {/* ========================================================
           DESIGN GRID
       ======================================================== */}
 
       <motion.div
+        className="flex-1"
         animate={gridAnimation}
         transition={{
           duration:
@@ -1574,83 +1721,157 @@ export default function DesignPage() {
             MOBILE GRID
         ====================================================== */}
 
-        <div className="block w-full md:hidden">
-          <div className="grid w-full gap-0">
-            {projects.map((project) => {
-              const images = getProjectImages(project);
-              const gridImageIndex = Math.min(
-                gridImageIndices[project.id] ?? 0,
-                Math.max(0, images.length - 1)
+        {(() => {
+          const orderedProjects = projects
+            .slice()
+            .sort((a, b) => a.position - b.position);
+
+          const placements = buildMobileImageMasonry(
+            orderedProjects,
+            imageDimensions,
+            mobileGridWidth
+          );
+
+          const gridHeight = orderedProjects.reduce(
+            (max, project) => {
+              const placement = placements[project.id];
+              return Math.max(
+                max,
+                placement
+                  ? placement.top + placement.height
+                  : 0
               );
-              const image = images[gridImageIndex] || null;
-              if (!image) return null;
+            },
+            0
+          );
 
-              const dimensions = imageDimensions[project.id];
-              const isSelectedTile = selectedProject?.id === project.id && animationPhase !== "closed";
-              const hasMultipleImages = images.length > 1;
+          return (
+            <div className="block w-full md:hidden">
+              <div
+                className="relative mx-auto w-full"
+                style={{
+                  height: gridHeight,
+                }}
+              >
+                {orderedProjects.map((project) => {
+                  const images = getProjectImages(project);
+                  const gridImageIndex = Math.min(
+                    gridImageIndices[project.id] ?? 0,
+                    Math.max(0, images.length - 1)
+                  );
+                  const image = images[gridImageIndex] || null;
+                  const placement = placements[project.id];
 
-              const changeGridImage = (direction: -1 | 1) => {
-                if (!hasMultipleImages) return;
-                const currentIndex = gridImageIndices[project.id] ?? 0;
-                const nextIndex = direction === -1
-                  ? currentIndex === 0 ? images.length - 1 : currentIndex - 1
-                  : currentIndex === images.length - 1 ? 0 : currentIndex + 1;
-                setGridImageIndices((current) => ({ ...current, [project.id]: nextIndex }));
-              };
+                  if (!image || !placement) return null;
 
-              return (
-                <div
-                  key={project.id}
-                  className="group relative box-border w-full overflow-hidden border border-black bg-white"
-                  style={{ aspectRatio: dimensions ? `${dimensions.width} / ${dimensions.height}` : "1 / 1" }}
-                >
-                  <button
-                    type="button"
-                    className="absolute inset-0 z-0 h-full w-full overflow-hidden bg-white"
-                    onClick={(event) => {
-                      const img = event.currentTarget.querySelector("img");
-                      if (!img) return;
-                      openProject(project, img, gridImageIndex);
-                    }}
-                  >
-                    <motion.img
-                      src={image}
-                      alt={project.name}
-                      ref={(el) => { mobileTileRefs.current[project.id] = el; }}
-                      animate={{ opacity: isSelectedTile ? 0 : 1 }}
-                      transition={{ duration: 0 }}
-                      className="h-full w-full object-contain"
-                      draggable={false}
-                    />
-                  </button>
+                  const isSelectedTile =
+                    selectedProject?.id === project.id &&
+                    animationPhase !== "closed";
+                  const hasMultipleImages = images.length > 1;
 
-                  {hasMultipleImages && (
-                    <>
+                  const changeGridImage = (direction: -1 | 1) => {
+                    if (!hasMultipleImages) return;
+
+                    const currentIndex =
+                      gridImageIndices[project.id] ?? 0;
+
+                    const nextIndex =
+                      direction === -1
+                        ? currentIndex === 0
+                          ? images.length - 1
+                          : currentIndex - 1
+                        : currentIndex === images.length - 1
+                          ? 0
+                          : currentIndex + 1;
+
+                    setGridImageIndices((current) => ({
+                      ...current,
+                      [project.id]: nextIndex,
+                    }));
+                  };
+
+                  return (
+                    <div
+                      key={project.id}
+                      className="group absolute box-border overflow-hidden border border-black bg-white"
+                      style={{
+                        left: placement.left,
+                        top: placement.top,
+                        width: placement.width,
+                        height: placement.height,
+                      }}
+                    >
                       <button
                         type="button"
-                        aria-label="Previous image"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => { event.stopPropagation(); changeGridImage(-1); }}
-                        className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                        className="absolute inset-0 z-0 h-full w-full overflow-hidden bg-white"
+                        onClick={(event) => {
+                          const img =
+                            event.currentTarget.querySelector("img");
+
+                          if (!img) return;
+
+                          openProject(
+                            project,
+                            img,
+                            gridImageIndex
+                          );
+                        }}
                       >
-                        <span className="-mt-px">←</span>
+                        <motion.img
+                          src={image}
+                          alt={project.name}
+                          ref={(el) => {
+                            mobileTileRefs.current[project.id] = el;
+                          }}
+                          animate={{
+                            opacity: isSelectedTile ? 0 : 1,
+                          }}
+                          transition={{ duration: 0 }}
+                          className="h-full w-full object-contain"
+                          draggable={false}
+                        />
                       </button>
-                      <button
-                        type="button"
-                        aria-label="Next image"
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => { event.stopPropagation(); changeGridImage(1); }}
-                        className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
-                      >
-                        <span className="-mt-px">→</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+
+                      {hasMultipleImages && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Previous image"
+                            onMouseDown={(event) =>
+                              event.stopPropagation()
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              changeGridImage(-1);
+                            }}
+                            className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                          >
+                            <span className="-mt-px">←</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label="Next image"
+                            onMouseDown={(event) =>
+                              event.stopPropagation()
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              changeGridImage(1);
+                            }}
+                            className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center border border-black bg-white/90 font-['Degular'] text-[24px] leading-none opacity-100 transition-opacity duration-200 hover:opacity-70 md:opacity-0 md:group-hover:opacity-100"
+                          >
+                            <span className="-mt-px">→</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </motion.div>
 
       {/* ========================================================
@@ -1717,7 +1938,7 @@ export default function DesignPage() {
               ================================================== */}
 
               <motion.aside
-                className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] overflow-hidden border-r border-black bg-white"
+                className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] max-md:w-[50vw] max-md:min-w-0 max-md:max-w-none overflow-hidden border-r border-black bg-white"
                 initial={{
                   x: "-100%",
                 }}
@@ -1751,12 +1972,12 @@ export default function DesignPage() {
                       X | SHARE |      | LEFT | RIGHT
                   ================================================= */}
 
-                  <div className="flex h-[52px] shrink-0 border-b border-black">
+                  <div className="flex h-[52px] shrink-0 border-b border-black max-md:h-[48px]">
                     <button
                       type="button"
                       onClick={closeProject}
                       aria-label="Close"
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-r border-black transition-opacity hover:opacity-50"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-r border-black transition-opacity hover:opacity-50 max-md:w-12"
                     >
                       <span className="relative block h-[18px] w-[18px]">
                         <span className="absolute left-1/2 top-1/2 h-[1.5px] w-[19px] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-black" />
@@ -1808,7 +2029,7 @@ export default function DesignPage() {
                           }
                         }
                       }}
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-r border-black transition-opacity hover:opacity-50"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-r border-black transition-opacity hover:opacity-50 max-md:w-12"
                     >
                       {copied ? (
                         <svg
@@ -1867,7 +2088,7 @@ export default function DesignPage() {
                       type="button"
                       onClick={() => navigateProject(-1)}
                       aria-label="Previous project"
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 max-md:w-12 max-md:text-[24px]"
                     >
                       ‹
                     </button>
@@ -1876,7 +2097,7 @@ export default function DesignPage() {
                       type="button"
                       onClick={() => navigateProject(1)}
                       aria-label="Next project"
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 max-md:w-12 max-md:text-[24px]"
                     >
                       ›
                     </button>
@@ -1886,12 +2107,12 @@ export default function DesignPage() {
                       NAME
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-6">
+                  <div className="border-b border-black px-6 py-6 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       NAME
                     </div>
 
-                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(34px,4vw,56px)] leading-[0.85] tracking-[-0.05em]">
+                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(27px,4vw,56px)] leading-[0.85] tracking-[-0.05em] max-md:text-[38px]">
                       {
                         selectedProject.name
                       }
@@ -1902,12 +2123,12 @@ export default function DesignPage() {
                       SKILL
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SKILL
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {
                         selectedProject.skill ||
                         "—"
@@ -1919,12 +2140,12 @@ export default function DesignPage() {
                       KIND
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       KIND
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {
                         selectedProject.kind ||
                         "—"
@@ -1936,12 +2157,12 @@ export default function DesignPage() {
                       SOFTWARE(S) USED
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SOFTWARE(S) USED
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.softwares
                         ? selectedProject.softwares.split(",").map((software, index) => (
                           <span key={index} className="block">
@@ -1956,12 +2177,12 @@ export default function DesignPage() {
                       FOR WHOM
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       FOR WHOM
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.client ? (
                         selectedProject.client_url ? (
                           <a
@@ -1985,12 +2206,12 @@ export default function DesignPage() {
                       WHEN
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       WHEN
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.project_date
                         ? new Date(
                           selectedProject.project_date
@@ -2011,9 +2232,9 @@ export default function DesignPage() {
                       DESCRIPTION
                   ================================================= */}
 
-                  <div className="px-6 pt-5">
+                  <div className="px-6 pt-5 max-md:px-4 max-md:pt-4">
                     {selectedProject.description && (
-                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em]">
+                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em] max-md:text-[15px]">
                         {
                           selectedProject.description
                         }
@@ -2027,7 +2248,7 @@ export default function DesignPage() {
 
                   {selectedImages.length >
                     1 && (
-                      <div className="mt-auto flex items-center justify-between border-t border-black px-6 py-4 font-['Degular'] text-[18px] font-semibold">
+                      <div className="mt-auto flex items-center justify-between border-t border-black px-6 py-4 font-['Degular'] text-[18px] font-semibold max-md:px-4 max-md:py-3 max-md:text-[19px]">
                         <button
                           type="button"
                           onClick={
@@ -2156,8 +2377,35 @@ export default function DesignPage() {
           FOOTER
       ======================================================== */}
 
-      <div className="mx-auto w-full max-w-[1920px] mt-30 border-t border-black">
-        <Footer borderTop={false} />
+      <div className="mx-auto mt-30 w-full max-w-[1920px] border-t border-black">
+        <div className="hidden md:block">
+          <Footer borderTop={false} />
+        </div>
+
+        <div className="grid w-full grid-cols-3 items-center py-5 px-4 md:hidden">
+          <a
+            href="https://mail.google.com/mail/?view=cm&fs=1&to=wrk@aruu.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="justify-self-start whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            wrk@aruu.fr
+          </a>
+          <a
+            href="https://www.instagram.com/aruuforeal/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="justify-self-center whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            @aruuforeal
+          </a>
+          <a
+            href="tel:+916006087997"
+            className="justify-self-end whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            +91 6006087997
+          </a>
+        </div>
       </div>
 
       {/* ========================================================

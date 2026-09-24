@@ -14,7 +14,6 @@ export default function NewProjectPage() {
     const [clientUrl, setClientUrl] = useState("");
     const [projectDate, setProjectDate] = useState("");
     const [category, setCategory] = useState("video-edit");
-    const [aspectRatio, setAspectRatio] = useState("16:9");
     const [description, setDescription] = useState("");
     const [published, setPublished] = useState(false);
 
@@ -277,7 +276,6 @@ export default function NewProjectPage() {
                         client_url: clientUrl || null,
                         project_date: projectDate || null,
                         category,
-                        aspect_ratio: aspectRatio,
 
                         video_url: null,
                         thumbnail_url: previewUrl,
@@ -470,36 +468,6 @@ export default function NewProjectPage() {
                             </select>
                         </div>
 
-                        <div>
-                            <label className="mb-2 block text-sm font-medium">
-                                Aspect Ratio
-                            </label>
-
-                            <select
-                                value={aspectRatio}
-                                onChange={(e) =>
-                                    setAspectRatio(e.target.value)
-                                }
-                                className="w-full border border-black bg-white px-4 py-3 outline-none"
-                            >
-                                {category === "video-edit" ? (
-                                    <>
-                                        <option value="3:4">3:4</option>
-                                        <option value="16:9">16:9</option>
-                                        <option value="4:3">4:3</option>
-                                        <option value="9:16">9:16</option>
-                                        <option value="1:1">1:1</option>
-                                    </>
-                                ) : (
-                                    <>
-                                        <option value="2:3">2:3</option>
-                                        <option value="4:3">4:3</option>
-                                        <option value="16:9">16:9</option>
-                                        <option value="8:3">8:3</option>
-                                    </>
-                                )}
-                            </select>
-                        </div>
                     </div>
 
                     <div className="mt-5">

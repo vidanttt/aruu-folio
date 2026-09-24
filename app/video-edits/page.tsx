@@ -27,7 +27,6 @@ type Project = {
   client_url: string | null;
   project_date: string | null;
   category: string;
-  aspect_ratio: string;
   position: number;
   thumbnail_url: string | null;
   description: string | null;
@@ -75,22 +74,6 @@ function getHeaderHeight() {
  * ============================================================
  */
 
-function parseAspectRatio(value: string | null | undefined) {
-  if (!value) return 16 / 9;
-
-  // Fallback only. The actual video dimensions are used once
-  // the preview metadata has loaded.
-  const normalized = value.trim().toLowerCase().replace(/[x:]/g, "/");
-  const parts = normalized.split("/").map((part) => Number(part.trim()));
-
-  if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
-    return parts[0] / parts[1];
-  }
-
-  const decimal = Number(normalized);
-  return decimal > 0 ? decimal : 16 / 9;
-}
-
 type VideoDimensionMap = Record<
   number,
   {
@@ -109,7 +92,10 @@ function getVideoRatio(
     return natural.width / natural.height;
   }
 
-  return parseAspectRatio(project.aspect_ratio);
+  // Until metadata is available, use a neutral placeholder ratio.
+  // The layout updates automatically as soon as the real video
+  // dimensions are loaded.
+  return 1;
 }
 
 function getVideoTileSpan(ratio: number) {
@@ -132,77 +118,231 @@ function buildVideoMasonry(
   containerWidth: number
 ): Record<number, VideoTilePlacement> {
   const placements: Record<number, VideoTilePlacement> = {};
+  if (!containerWidth || projects.length === 0) return placements;
+
+  /*
+   * Desktop stays a strict 5-unit system.
+   *
+   * A portrait/square uses 1 unit and a landscape uses 2 units.
+   * We dynamically choose which remaining project goes into the
+   * lowest available pocket, so the five-unit grid can close gaps
+   * instead of blindly following one fixed skyline order.
+   *
+   * The five-unit width never changes and videos keep their real
+   * dimensions. Only the packing order/vertical position changes.
+   */
+  const GRID_COLUMNS = 5;
+  const columnWidth = containerWidth / GRID_COLUMNS;
+  const skyline = Array.from({ length: GRID_COLUMNS }, () => 0);
+  const remaining = projects.map((project, index) => ({ project, index }));
+
+  while (remaining.length > 0) {
+    let best:
+      | {
+        remainingIndex: number;
+        startColumn: number;
+        top: number;
+        width: number;
+        height: number;
+        score: [number, number, number, number];
+      }
+      | null = null;
+
+    for (
+      let candidateIndex = 0;
+      candidateIndex < remaining.length;
+      candidateIndex += 1
+    ) {
+      const project = remaining[candidateIndex].project;
+      const ratio = Math.max(
+        0.01,
+        getVideoRatio(project, dimensions)
+      );
+
+      const columnSpan = getVideoTileSpan(ratio);
+      const width = columnWidth * columnSpan;
+      const height = width / ratio;
+
+      for (
+        let startColumn = 0;
+        startColumn <= GRID_COLUMNS - columnSpan;
+        startColumn += 1
+      ) {
+        const occupied = skyline.slice(
+          startColumn,
+          startColumn + columnSpan
+        );
+
+        const top = Math.max(...occupied);
+        const nextSkyline = [...skyline];
+        const bottom = top + height;
+
+        for (
+          let column = startColumn;
+          column < startColumn + columnSpan;
+          column += 1
+        ) {
+          nextSkyline[column] = bottom;
+        }
+
+        const newMax = Math.max(...nextSkyline);
+        const newMin = Math.min(...nextSkyline);
+        const spread = newMax - newMin;
+
+        const score: [number, number, number, number] = [
+          top,
+          spread,
+          newMax,
+          remaining[candidateIndex].index,
+        ];
+
+        if (
+          !best ||
+          score[0] < best.score[0] ||
+          (score[0] === best.score[0] &&
+            score[1] < best.score[1]) ||
+          (score[0] === best.score[0] &&
+            score[1] === best.score[1] &&
+            score[2] < best.score[2]) ||
+          (score[0] === best.score[0] &&
+            score[1] === best.score[1] &&
+            score[2] === best.score[2] &&
+            score[3] < best.score[3])
+        ) {
+          best = {
+            remainingIndex: candidateIndex,
+            startColumn,
+            top,
+            width,
+            height,
+            score,
+          };
+        }
+      }
+    }
+
+    if (!best) break;
+
+    const chosen = remaining.splice(
+      best.remainingIndex,
+      1
+    )[0].project;
+
+    placements[chosen.id] = {
+      left: best.startColumn * columnWidth,
+      top: best.top,
+      width: best.width,
+      height: best.height,
+    };
+
+    const bottom = best.top + best.height;
+    const span = Math.round(
+      best.width / columnWidth
+    );
+
+    for (
+      let column = best.startColumn;
+      column < best.startColumn + span;
+      column += 1
+    ) {
+      skyline[column] = bottom;
+    }
+  }
+
+  return placements;
+}
+
+type MobileVideoTilePlacement = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+function buildMobileVideoMasonry(
+  projects: Project[],
+  dimensions: VideoDimensionMap,
+  containerWidth: number
+): Record<number, MobileVideoTilePlacement> {
+  const placements: Record<
+    number,
+    MobileVideoTilePlacement
+  > = {};
 
   if (!containerWidth) return placements;
 
-  const columnWidth = containerWidth / 5;
+  const columnWidth = containerWidth / 2;
+  let cursorY = 0;
 
-  // Each entry stores the occupied rectangle of a previous video.
-  // The layout searches for the earliest available position for each
-  // new video, so later tiles can fill vertical gaps left by shorter
-  // neighbouring videos instead of creating white blank areas.
-  const placed: Array<{
-    columns: [number, number];
-    top: number;
-    bottom: number;
-  }> = [];
-
-  for (const project of projects) {
+  /*
+   * Same mobile rule as the Design page:
+   * - two clearly vertical videos can sit side-by-side
+   * - everything else gets a full-width tile
+   * - a lone vertical video becomes full-width instead of
+   *   leaving an empty half-row
+   */
+  for (
+    let index = 0;
+    index < projects.length;
+    index += 1
+  ) {
+    const project = projects[index];
     const ratio = Math.max(
       0.01,
       getVideoRatio(project, dimensions)
     );
 
-    const columnSpan = getVideoTileSpan(ratio);
-    const width = columnWidth * columnSpan;
-    const height = width / ratio;
+    const isPortrait = ratio < 0.82;
+    const nextProject = projects[index + 1];
+    const nextRatio = nextProject
+      ? Math.max(
+        0.01,
+        getVideoRatio(nextProject, dimensions)
+      )
+      : 1;
+    const nextIsPortrait =
+      Boolean(nextProject) && nextRatio < 0.82;
 
-    let bestColumn = 0;
-    let bestTop = Number.POSITIVE_INFINITY;
+    if (isPortrait && nextIsPortrait) {
+      const firstHeight =
+        columnWidth / ratio;
+      const secondHeight =
+        columnWidth / nextRatio;
+      const rowHeight = Math.max(
+        firstHeight,
+        secondHeight
+      );
 
-    for (
-      let startColumn = 0;
-      startColumn <= 5 - columnSpan;
-      startColumn += 1
-    ) {
-      let top = 0;
+      placements[project.id] = {
+        left: 0,
+        top: cursorY,
+        width: columnWidth,
+        height: firstHeight,
+      };
 
-      for (const previous of placed) {
-        const overlapsHorizontally =
-          startColumn < previous.columns[1] &&
-          startColumn + columnSpan > previous.columns[0];
+      placements[nextProject.id] = {
+        left: columnWidth,
+        top: cursorY,
+        width: columnWidth,
+        height: secondHeight,
+      };
 
-        if (overlapsHorizontally) {
-          top = Math.max(top, previous.bottom);
-        }
-      }
-
-      if (
-        top < bestTop ||
-        (top === bestTop && startColumn < bestColumn)
-      ) {
-        bestTop = top;
-        bestColumn = startColumn;
-      }
+      cursorY += rowHeight;
+      index += 1;
+      continue;
     }
 
-    const placement = {
-      left: bestColumn * columnWidth,
-      top: bestTop,
+    const width = containerWidth;
+    const height = width / ratio;
+
+    placements[project.id] = {
+      left: 0,
+      top: cursorY,
       width,
       height,
     };
 
-    placements[project.id] = placement;
-
-    placed.push({
-      columns: [
-        bestColumn,
-        bestColumn + columnSpan,
-      ],
-      top: bestTop,
-      bottom: bestTop + height,
-    });
+    cursorY += height;
   }
 
   return placements;
@@ -221,6 +361,9 @@ export default function VideoEditsPage() {
     useState<VideoDimensionMap>({});
 
   const [desktopGridWidth, setDesktopGridWidth] =
+    useState(0);
+
+  const [mobileGridWidth, setMobileGridWidth] =
     useState(0);
 
   const [selectedProject, setSelectedProject] =
@@ -515,12 +658,14 @@ export default function VideoEditsPage() {
     function syncDesktopGridWidth() {
       if (window.innerWidth < 768) {
         setDesktopGridWidth(0);
+        setMobileGridWidth(window.innerWidth);
         return;
       }
 
       setDesktopGridWidth(
         Math.min(window.innerWidth, 1920)
       );
+      setMobileGridWidth(0);
     }
 
     syncDesktopGridWidth();
@@ -545,7 +690,7 @@ export default function VideoEditsPage() {
         await supabase
           .from("projects")
           .select(
-            "id, name, skill, kind, softwares, client, client_url, project_date, category, aspect_ratio, position, thumbnail_url, description, published"
+            "id, name, skill, kind, softwares, client, client_url, project_date, category, position, thumbnail_url, description, published"
           )
           .eq(
             "category",
@@ -743,10 +888,7 @@ export default function VideoEditsPage() {
 
     const panelWidth =
       viewportWidth < 768
-        ? Math.min(
-          viewportWidth * 0.82,
-          420
-        )
+        ? viewportWidth * 0.5
         : Math.min(
           Math.max(
             viewportWidth * 0.2,
@@ -771,12 +913,12 @@ export default function VideoEditsPage() {
 
     const paddingX =
       viewportWidth < 768
-        ? 20
+        ? 8
         : 48;
 
     const paddingY =
       viewportWidth < 768
-        ? 24
+        ? 12
         : 40;
 
     const area: Rect = {
@@ -1537,100 +1679,136 @@ export default function VideoEditsPage() {
               MOBILE GRID
           ====================================================== */}
 
-          <div className="flex flex-col gap-0 bg-background md:hidden">
-            {projects.map((project) => {
-              const ratio = getVideoRatio(
-                project,
-                videoDimensions
-              );
+          {(() => {
+            const placements = buildMobileVideoMasonry(
+              projects,
+              videoDimensions,
+              mobileGridWidth
+            );
 
-              const isSelected =
-                selectedProject?.id ===
-                project.id &&
-                animationPhase !== "closed";
+            const gridHeight = projects.reduce(
+              (max, project) => {
+                const placement = placements[project.id];
+                return Math.max(
+                  max,
+                  placement
+                    ? placement.top + placement.height
+                    : 0
+                );
+              },
+              0
+            );
 
-              return (
+            return (
+              <div className="relative w-full bg-background md:hidden">
                 <div
-                  key={project.id}
-                  className="relative w-full overflow-hidden border border-black bg-background"
+                  className="relative w-full"
                   style={{
-                    aspectRatio: `${ratio}`,
-                    boxSizing: "border-box",
+                    height: gridHeight,
                   }}
                 >
-                  {project.thumbnail_url && (
-                    <button
-                      type="button"
-                      className="group absolute inset-0 block h-full w-full overflow-hidden bg-background"
-                      onClick={(event) => {
-                        const video =
-                          event.currentTarget.querySelector(
-                            "video"
-                          );
+                  {projects.map((project) => {
+                    const placement =
+                      placements[project.id];
 
-                        openProject(
-                          project,
-                          video
-                        );
-                      }}
-                    >
-                      <motion.video
-                        ref={(el) => {
-                          mobileTileRefs.current[
-                            project.id
-                          ] = el;
-                        }}
-                        src={
-                          project.thumbnail_url
-                        }
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        preload="metadata"
-                        onLoadedMetadata={(
-                          event
-                        ) => {
-                          const video =
-                            event.currentTarget;
+                    if (!placement) {
+                      return null;
+                    }
 
-                          if (
-                            !video.videoWidth ||
-                            !video.videoHeight
-                          ) {
-                            return;
-                          }
+                    const isSelected =
+                      selectedProject?.id ===
+                      project.id &&
+                      animationPhase !== "closed";
 
-                          setVideoDimensions(
-                            (current) => ({
-                              ...current,
-                              [project.id]: {
-                                width:
-                                  video.videoWidth,
-                                height:
-                                  video.videoHeight,
-                              },
-                            })
-                          );
+                    return (
+                      <div
+                        key={project.id}
+                        className="absolute overflow-hidden border border-black bg-background"
+                        style={{
+                          left: placement.left,
+                          top: placement.top,
+                          width: placement.width,
+                          height: placement.height,
+                          boxSizing: "border-box",
                         }}
-                        animate={{
-                          opacity:
-                            isSelected
-                              ? 0
-                              : 1,
-                        }}
-                        transition={{
-                          duration: 0,
-                        }}
-                        className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
-                        draggable={false}
-                      />
-                    </button>
-                  )}
+                      >
+                        {project.thumbnail_url && (
+                          <button
+                            type="button"
+                            className="group absolute inset-0 block h-full w-full overflow-hidden bg-background"
+                            onClick={(event) => {
+                              const video =
+                                event.currentTarget.querySelector(
+                                  "video"
+                                );
+
+                              openProject(
+                                project,
+                                video
+                              );
+                            }}
+                          >
+                            <motion.video
+                              ref={(el) => {
+                                mobileTileRefs.current[
+                                  project.id
+                                ] = el;
+                              }}
+                              src={
+                                project.thumbnail_url
+                              }
+                              autoPlay
+                              muted
+                              loop
+                              playsInline
+                              preload="metadata"
+                              onLoadedMetadata={(
+                                event
+                              ) => {
+                                const video =
+                                  event.currentTarget;
+
+                                if (
+                                  !video.videoWidth ||
+                                  !video.videoHeight
+                                ) {
+                                  return;
+                                }
+
+                                setVideoDimensions(
+                                  (current) => ({
+                                    ...current,
+                                    [project.id]: {
+                                      width:
+                                        video.videoWidth,
+                                      height:
+                                        video.videoHeight,
+                                    },
+                                  })
+                                );
+                              }}
+                              animate={{
+                                opacity:
+                                  isSelected
+                                    ? 0
+                                    : 1,
+                              }}
+                              transition={{
+                                duration: 0,
+                              }}
+                              className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                              draggable={false}
+                            />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })()}
+
         </motion.div>
       </div>
 
@@ -1689,7 +1867,7 @@ export default function VideoEditsPage() {
               ================================================== */}
 
               <motion.aside
-                className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] overflow-hidden border-r border-black bg-white"
+                className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] max-md:w-[50vw] max-md:min-w-0 max-md:max-w-none overflow-hidden border-r border-black bg-white"
                 initial={{
                   x: "-100%",
                 }}
@@ -1890,7 +2068,7 @@ export default function VideoEditsPage() {
                       onClick={() => navigateProject(-1)}
                       aria-label="Previous project"
                       disabled={projects.length < 2 || animationPhase === "closing"}
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12 max-md:text-[24px]"
                     >
                       ‹
                     </button>
@@ -1900,7 +2078,7 @@ export default function VideoEditsPage() {
                       onClick={() => navigateProject(1)}
                       aria-label="Next project"
                       disabled={projects.length < 2 || animationPhase === "closing"}
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12 max-md:text-[24px]"
                     >
                       ›
                     </button>
@@ -1910,12 +2088,12 @@ export default function VideoEditsPage() {
                       NAME
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-6">
+                  <div className="border-b border-black px-6 py-6 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       NAME
                     </div>
 
-                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(34px,4vw,56px)] leading-[0.85] tracking-[-0.05em]">
+                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(27px,4vw,56px)] leading-[0.85] tracking-[-0.05em] max-md:text-[38px]">
                       {
                         selectedProject.name
                       }
@@ -1926,12 +2104,12 @@ export default function VideoEditsPage() {
                       SKILL
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SKILL
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {
                         selectedProject.skill ||
                         "—"
@@ -1943,12 +2121,12 @@ export default function VideoEditsPage() {
                       KIND
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       KIND
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {
                         selectedProject.kind ||
                         "—"
@@ -1960,12 +2138,12 @@ export default function VideoEditsPage() {
                       SOFTWARE
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       SOFTWARE(S) USED
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.softwares
                         ? selectedProject.softwares.split(",").map((software, index) => (
                           <span key={index} className="block">
@@ -1980,12 +2158,12 @@ export default function VideoEditsPage() {
                       CLIENT
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       FOR WHOM
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.client ? (
                         selectedProject.client_url ? (
                           <a
@@ -2013,12 +2191,12 @@ export default function VideoEditsPage() {
                       DATE
                   ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5">
+                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
                     <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
                       WHEN
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em]">
+                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
                       {selectedProject.project_date
                         ? new Date(
                           selectedProject.project_date
@@ -2039,9 +2217,9 @@ export default function VideoEditsPage() {
                       DESCRIPTION
                   ================================================= */}
 
-                  <div className="px-6 pt-5">
+                  <div className="px-6 pt-5 max-md:px-4 max-md:pt-4">
                     {selectedProject.description && (
-                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em]">
+                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em] max-md:text-[15px]">
                         {
                           selectedProject.description
                         }
@@ -2215,8 +2393,37 @@ export default function VideoEditsPage() {
           FOOTER
       ======================================================== */}
 
-      <div className="mx-auto w-full max-w-[1920px] mt-30 border-t border-black">
-        <Footer borderTop={false} />
+      <div className="mx-auto mt-30 w-full max-w-[1920px] border-t border-black">
+        <div className="hidden md:block">
+          <Footer borderTop={false} />
+        </div>
+
+        <div className="grid w-full grid-cols-3 items-center px-4 py-5 md:hidden">
+          <a
+            href="https://mail.google.com/mail/?view=cm&fs=1&to=wrk@aruu.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="justify-self-start whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            wrk@aruu.fr
+          </a>
+
+          <a
+            href="https://www.instagram.com/aruuforeal/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="justify-self-center whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            @aruuforeal
+          </a>
+
+          <a
+            href="tel:+916006087997"
+            className="justify-self-end whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
+          >
+            +91 6006087997
+          </a>
+        </div>
       </div>
 
       {/* ========================================================
