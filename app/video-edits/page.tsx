@@ -421,6 +421,41 @@ export default function VideoEditsPage() {
       {}
     );
 
+  function setDesktopGridPlayback(
+    playing: boolean
+  ) {
+    if (
+      typeof window === "undefined" ||
+      !window.matchMedia("(min-width: 768px)").matches
+    ) {
+      return;
+    }
+
+    Object.values(desktopTileRefs.current).forEach(
+      (video) => {
+        if (!video) return;
+
+        if (playing) {
+          const playPromise = video.play();
+
+          if (playPromise) {
+            playPromise.catch(() => {
+              // Browser autoplay restrictions can reject play().
+            });
+          }
+        } else {
+          video.pause();
+        }
+      }
+    );
+  }
+
+  useEffect(() => {
+    setDesktopGridPlayback(
+      animationPhase === "closed"
+    );
+  }, [animationPhase]);
+
   function getLiveTileRect(
     projectId: number
   ): Rect | null {
@@ -1149,6 +1184,11 @@ export default function VideoEditsPage() {
       return;
     }
 
+    // Freeze every desktop grid preview as soon as the viewer opens.
+    // They stay paused for the entire open/close animation and resume
+    // together only after the viewer has fully returned to the grid.
+    setDesktopGridPlayback(false);
+
     const isTransitioning =
       animationPhaseRef.current !==
       "closed";
@@ -1352,6 +1392,9 @@ export default function VideoEditsPage() {
     const startRect =
       getArtworkRect();
 
+    // Resume the desktop grid immediately when the close animation starts.
+    setDesktopGridPlayback(true);
+
     setAnimationPhase(
       "closing"
     );
@@ -1381,6 +1424,7 @@ export default function VideoEditsPage() {
         setAnimationPhase(
           "closed"
         );
+        // The animationPhase effect resumes all desktop grid previews here.
 
         if (pendingOpen) {
           requestAnimationFrame(
