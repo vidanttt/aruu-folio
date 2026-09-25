@@ -25,7 +25,6 @@ type ProjectForm = {
     client_url: string;
     project_date: string;
     category: string;
-    aspect_ratio: string;
     description: string;
     thumbnail_url: string;
     published: boolean;
@@ -47,7 +46,6 @@ export default function EditProjectPage() {
         client_url: "",
         project_date: "",
         category: "video-edit",
-        aspect_ratio: "",
         description: "",
         thumbnail_url: "",
         published: false,
@@ -94,7 +92,6 @@ export default function EditProjectPage() {
                 client_url: data.client_url || "",
                 project_date: data.project_date || "",
                 category: data.category || "video-edit",
-                aspect_ratio: data.aspect_ratio || "",
                 description: data.description || "",
                 thumbnail_url: data.thumbnail_url || "",
                 published: data.published || false,
@@ -465,7 +462,6 @@ export default function EditProjectPage() {
                     client_url: form.client_url || null,
                     project_date: form.project_date || null,
                     category: form.category,
-                    aspect_ratio: form.aspect_ratio,
                     description: form.description || null,
 
                     video_url: null,
@@ -734,13 +730,6 @@ export default function EditProjectPage() {
                                             nextCategory
                                         );
 
-                                        updateField(
-                                            "aspect_ratio",
-                                            nextCategory ===
-                                                "design"
-                                                ? "2:3"
-                                                : "16:9"
-                                        );
                                     }}
                                     className="w-full border border-black bg-white p-3 outline-none"
                                 >
@@ -751,69 +740,6 @@ export default function EditProjectPage() {
                                     <option value="design">
                                         Design
                                     </option>
-                                </select>
-                            </div>
-
-                            {/* ASPECT RATIO */}
-
-                            <div>
-                                <label className="mb-2 block text-sm font-medium">
-                                    Aspect Ratio
-                                </label>
-
-                                <select
-                                    value={form.aspect_ratio}
-                                    onChange={(e) =>
-                                        updateField(
-                                            "aspect_ratio",
-                                            e.target.value
-                                        )
-                                    }
-                                    className="w-full border border-black bg-white p-3 outline-none"
-                                    required
-                                >
-                                    {form.category ===
-                                        "video-edit" ? (
-                                        <>
-                                            <option value="3:4">
-                                                3:4
-                                            </option>
-
-                                            <option value="16:9">
-                                                16:9
-                                            </option>
-
-                                            <option value="4:3">
-                                                4:3
-                                            </option>
-
-                                            <option value="9:16">
-                                                9:16
-                                            </option>
-
-                                            <option value="1:1">
-                                                1:1
-                                            </option>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <option value="2:3">
-                                                2:3
-                                            </option>
-
-                                            <option value="4:3">
-                                                4:3
-                                            </option>
-
-                                            <option value="16:9">
-                                                16:9
-                                            </option>
-
-                                            <option value="8:3">
-                                                8:3
-                                            </option>
-                                        </>
-                                    )}
                                 </select>
                             </div>
 
