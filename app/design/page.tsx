@@ -13,8 +13,10 @@ import {
   useState,
   type MouseEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 
 import Footer from "../components/Footer";
+import MobileFooter from "../components/MobileFooter";
 import { createClient } from "@/lib/supabase/client";
 
 type Project = {
@@ -63,8 +65,8 @@ const supabase = createClient();
  * a live target if the user scrolls mid-close,
  * so a shorter duration also reads better.
  */
-const OPEN_DURATION = 0.75;
-const CLOSE_DURATION = 0.5;
+const OPEN_DURATION = 0.375;
+const CLOSE_DURATION = 0.25;
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -424,6 +426,7 @@ function fitImageIntoArea(
 }
 
 export default function DesignPage() {
+  const router = useRouter();
   const [projects, setProjects] =
     useState<Project[]>([]);
 
@@ -448,6 +451,9 @@ export default function DesignPage() {
   // Remembers the image currently shown in each project tile.
   const [gridImageIndices, setGridImageIndices] =
     useState<Record<number, number>>({});
+
+  const [gridImageDirections, setGridImageDirections] =
+    useState<Record<number, 1 | -1>>({});
 
   const [imageDirection, setImageDirection] =
     useState<1 | -1>(1);
@@ -559,6 +565,7 @@ export default function DesignPage() {
   const artTop = useMotionValue(0);
   const artWidth = useMotionValue(0);
   const artHeight = useMotionValue(0);
+  const artScale = useMotionValue(1);
 
   function getArtworkRect(): Rect {
     return {
@@ -583,6 +590,7 @@ export default function DesignPage() {
     artTop.stop();
     artWidth.stop();
     artHeight.stop();
+    artScale.stop();
   }
 
   function animateArtworkRectTo(
@@ -901,6 +909,16 @@ export default function DesignPage() {
       ? Math.max(0, parseInt(imgParam, 10) - 1)
       : 0;
 
+    if (
+      window.matchMedia("(max-width: 767px)").matches
+    ) {
+      router.replace(
+        `/design/${targetProject.id}${targetImgIndex > 0 ? `?img=${targetImgIndex + 1}` : ""
+        }`
+      );
+      return;
+    }
+
     requestAnimationFrame(() => {
       const tileEl =
         desktopTileRefs.current[targetProject.id] ||
@@ -1058,6 +1076,7 @@ export default function DesignPage() {
 
     stopCloseAnimation();
     stopArtworkAnimation();
+    artScale.set(1.035);
     setArtworkRectInstant(sourceRect);
     setOriginRect(sourceRect);
     setSelectedProject(project);
@@ -1093,6 +1112,24 @@ export default function DesignPage() {
     imageElement?: HTMLImageElement | null,
     initialImageIndex: number = 0
   ) {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches
+    ) {
+      const images = getProjectImages(project);
+      const safeIndex =
+        initialImageIndex >= 0 &&
+          initialImageIndex < images.length
+          ? initialImageIndex
+          : 0;
+
+      router.push(
+        `/design/${project.id}${safeIndex > 0 ? `?img=${safeIndex + 1}` : ""
+        }`
+      );
+      return;
+    }
+
     const isTransitioning = animationPhaseRef.current !== "closed";
     const isDifferentProject = selectedProject && selectedProject.id !== project.id;
 
@@ -1206,6 +1243,8 @@ export default function DesignPage() {
 
     const startRect =
       getArtworkRect();
+
+    artScale.set(1);
 
     setAnimationPhase("closing");
 
@@ -1358,6 +1397,15 @@ export default function DesignPage() {
       animateArtworkRectTo(
         nextRect,
         OPEN_DURATION
+      );
+
+      animateMotionValue(
+        artScale,
+        1,
+        {
+          duration: OPEN_DURATION,
+          ease: EASE,
+        }
       );
 
       setAnimationPhase(
@@ -1653,8 +1701,18 @@ export default function DesignPage() {
                     const nextIndex = direction === -1
                       ? currentIndex === 0 ? images.length - 1 : currentIndex - 1
                       : currentIndex === images.length - 1 ? 0 : currentIndex + 1;
-                    setGridImageIndices((current) => ({ ...current, [project.id]: nextIndex }));
+                    setGridImageDirections((current) => ({
+                      ...current,
+                      [project.id]: direction,
+                    }));
+                    setGridImageIndices((current) => ({
+                      ...current,
+                      [project.id]: nextIndex,
+                    }));
                   };
+
+                  const gridImageDirection =
+                    gridImageDirections[project.id] ?? 1;
 
                   return (
                     <div
@@ -1676,15 +1734,39 @@ export default function DesignPage() {
                           openProject(project, img, gridImageIndex);
                         }}
                       >
-                        <motion.img
-                          src={image}
-                          alt={project.name}
-                          ref={(el) => { desktopTileRefs.current[project.id] = el; }}
-                          animate={{ opacity: isSelectedTile ? 0 : 1 }}
-                          transition={{ duration: 0 }}
-                          className="h-full w-full object-contain transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
-                          draggable={false}
-                        />
+                        <AnimatePresence
+                          initial={false}
+                          custom={gridImageDirection}
+                          mode="sync"
+                        >
+                          <motion.img
+                            key={`${project.id}-${gridImageIndex}`}
+                            src={image}
+                            alt={project.name}
+                            custom={gridImageDirection}
+                            initial={{
+                              x: `${gridImageDirection * 100}%`,
+                            }}
+                            animate={{
+                              x: 0,
+                              opacity: isSelectedTile ? 0 : 1,
+                            }}
+                            exit={{
+                              x: `${gridImageDirection * -100}%`,
+                            }}
+                            transition={{
+                              duration: 0.32,
+                              ease: EASE,
+                            }}
+                            ref={(el) => {
+                              if (el) {
+                                desktopTileRefs.current[project.id] = el;
+                              }
+                            }}
+                            className="absolute inset-0 h-full w-full object-contain scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
+                            draggable={false}
+                          />
+                        </AnimatePresence>
                       </button>
 
                       {hasMultipleImages && (
@@ -1784,11 +1866,18 @@ export default function DesignPage() {
                           ? 0
                           : currentIndex + 1;
 
+                    setGridImageDirections((current) => ({
+                      ...current,
+                      [project.id]: direction,
+                    }));
                     setGridImageIndices((current) => ({
                       ...current,
                       [project.id]: nextIndex,
                     }));
                   };
+
+                  const gridImageDirection =
+                    gridImageDirections[project.id] ?? 1;
 
                   return (
                     <div
@@ -1817,19 +1906,39 @@ export default function DesignPage() {
                           );
                         }}
                       >
-                        <motion.img
-                          src={image}
-                          alt={project.name}
-                          ref={(el) => {
-                            mobileTileRefs.current[project.id] = el;
-                          }}
-                          animate={{
-                            opacity: isSelectedTile ? 0 : 1,
-                          }}
-                          transition={{ duration: 0 }}
-                          className="h-full w-full object-contain"
-                          draggable={false}
-                        />
+                        <AnimatePresence
+                          initial={false}
+                          custom={gridImageDirection}
+                          mode="sync"
+                        >
+                          <motion.img
+                            key={`${project.id}-${gridImageIndex}`}
+                            src={image}
+                            alt={project.name}
+                            custom={gridImageDirection}
+                            initial={{
+                              x: `${gridImageDirection * 100}%`,
+                            }}
+                            animate={{
+                              x: 0,
+                              opacity: isSelectedTile ? 0 : 1,
+                            }}
+                            exit={{
+                              x: `${gridImageDirection * -100}%`,
+                            }}
+                            transition={{
+                              duration: 0.32,
+                              ease: EASE,
+                            }}
+                            ref={(el) => {
+                              if (el) {
+                                mobileTileRefs.current[project.id] = el;
+                              }
+                            }}
+                            className="absolute inset-0 h-full w-full object-contain"
+                            draggable={false}
+                          />
+                        </AnimatePresence>
                       </button>
 
                       {hasMultipleImages && (
@@ -2304,6 +2413,8 @@ export default function DesignPage() {
                   top: artTop,
                   width: artWidth,
                   height: artHeight,
+                  scale: artScale,
+                  transformOrigin: "center center",
                   pointerEvents:
                     animationPhase ===
                       "closing"
@@ -2377,36 +2488,17 @@ export default function DesignPage() {
           FOOTER
       ======================================================== */}
 
-      <div className="mx-auto mt-30 w-full max-w-[1920px] border-t border-black">
-        <div className="hidden md:block">
-          <Footer borderTop={false} />
-        </div>
 
-        <div className="grid w-full grid-cols-3 items-center py-5 px-4 md:hidden">
-          <a
-            href="https://mail.google.com/mail/?view=cm&fs=1&to=wrk@aruu.fr"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="justify-self-start whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            wrk@aruu.fr
-          </a>
-          <a
-            href="https://www.instagram.com/aruuforeal/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="justify-self-center whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            @aruuforeal
-          </a>
-          <a
-            href="tel:+916006087997"
-            className="justify-self-end whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            +91 6006087997
-          </a>
-        </div>
+      {/* Desktop footer */}
+      <div className="max-md:hidden">
+        <Footer />
       </div>
+
+      {/* Mobile footer — appears after scrolling */}
+      <div className="md:hidden">
+        <MobileFooter />
+      </div>
+
 
       {/* ========================================================
           LOADING

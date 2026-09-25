@@ -1,15 +1,19 @@
 import Link from "next/link";
 import Footer from "./components/Footer";
+import MobileFooter from "./components/MobileFooter";
 
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col min-h-full justify-between">
+    <div className="flex min-h-full flex-1 flex-col justify-between">
       <section
-        className="relative flex min-h-0 flex-1 max-md:flex-col h-full"
+        className="relative flex min-h-0 flex-1 max-md:h-[calc(100svh-clamp(3.25rem,8vh,4.7rem))] max-md:min-h-[calc(100svh-clamp(3.25rem,8vh,4.7rem))] max-md:flex-none max-md:flex-col"
         aria-label="Portfolio categories"
       >
         {/* Left panel — Video Edit */}
-        <Link href="/video-edits" className="group relative flex flex-1 items-center justify-center overflow-hidden">
+        <Link
+          href="/video-edits"
+          className="group relative flex flex-1 items-center justify-center overflow-hidden"
+        >
           <img
             src="/video%20edits%20bg.png"
             alt=""
@@ -26,10 +30,13 @@ export default function Home() {
         </Link>
 
         {/* Divider */}
-        <div className="absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-foreground max-md:inset-x-0 max-md:inset-y-auto max-md:top-1/2 max-md:left-0 max-md:h-px max-md:w-full max-md:translate-x-0 max-md:-translate-y-1/2 pointer-events-none" />
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-20 w-px -translate-x-1/2 bg-foreground max-md:inset-x-0 max-md:inset-y-auto max-md:top-1/2 max-md:left-0 max-md:h-px max-md:w-full max-md:translate-x-0 max-md:-translate-y-1/2" />
 
         {/* Right panel — Design */}
-        <Link href="/design" className="group relative flex flex-1 items-center justify-center overflow-hidden">
+        <Link
+          href="/design"
+          className="group relative flex flex-1 items-center justify-center overflow-hidden"
+        >
           <img
             src="/design%20bg.png"
             alt=""
@@ -46,7 +53,15 @@ export default function Home() {
         </Link>
       </section>
 
-      <Footer />
+      {/* Desktop footer */}
+      <div className="max-md:hidden">
+        <Footer />
+      </div>
+
+      {/* Mobile footer — appears after scrolling */}
+      <div className="md:hidden">
+        <MobileFooter />
+      </div>
     </div>
   );
 }

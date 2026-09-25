@@ -14,7 +14,9 @@ import {
   type MouseEvent,
 } from "react";
 
+import { useRouter } from "next/navigation";
 import Footer from "../components/Footer";
+import MobileFooter from "../components/MobileFooter";
 import { createClient } from "@/lib/supabase/client";
 
 type Project = {
@@ -48,8 +50,8 @@ type AnimationPhase =
 
 const supabase = createClient();
 
-const OPEN_DURATION = 0.75;
-const CLOSE_DURATION = 0.5;
+const OPEN_DURATION = 0.375;
+const CLOSE_DURATION = 0.25;
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -355,6 +357,7 @@ function buildMobileVideoMasonry(
  */
 
 export default function VideoEditsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [videoDimensions, setVideoDimensions] =
@@ -461,6 +464,7 @@ export default function VideoEditsPage() {
   const artTop = useMotionValue(0);
   const artWidth = useMotionValue(0);
   const artHeight = useMotionValue(0);
+  const artworkAnimationIdRef = useRef(0);
 
   function getArtworkRect(): Rect {
     return {
@@ -481,6 +485,8 @@ export default function VideoEditsPage() {
   }
 
   function stopArtworkAnimation() {
+    artworkAnimationIdRef.current += 1;
+
     artLeft.stop();
     artTop.stop();
     artWidth.stop();
@@ -489,45 +495,143 @@ export default function VideoEditsPage() {
 
   function animateArtworkRectTo(
     rect: Rect,
-    duration: number
+    duration: number,
+    withBounce = false
   ) {
     stopArtworkAnimation();
 
-    animateMotionValue(
-      artLeft,
-      rect.left,
-      {
-        duration,
-        ease: EASE,
-      }
+    const animationId = artworkAnimationIdRef.current;
+
+    const animateTo = (
+      target: Rect,
+      phaseDuration: number
+    ) => {
+      animateMotionValue(
+        artLeft,
+        target.left,
+        {
+          duration: phaseDuration,
+          ease: EASE,
+        }
+      );
+
+      animateMotionValue(
+        artTop,
+        target.top,
+        {
+          duration: phaseDuration,
+          ease: EASE,
+        }
+      );
+
+      animateMotionValue(
+        artWidth,
+        target.width,
+        {
+          duration: phaseDuration,
+          ease: EASE,
+        }
+      );
+
+      animateMotionValue(
+        artHeight,
+        target.height,
+        {
+          duration: phaseDuration,
+          ease: EASE,
+        }
+      );
+    };
+
+    if (!withBounce) {
+      animateTo(rect, duration);
+      return;
+    }
+
+    const BOUNCE_SCALE = 1.035;
+    const BOUNCE_TIME = Math.min(
+      0.14,
+      duration * 0.4
+    );
+    const SETTLE_TIME = Math.max(
+      0,
+      duration - BOUNCE_TIME
     );
 
-    animateMotionValue(
-      artTop,
-      rect.top,
-      {
-        duration,
-        ease: EASE,
-      }
-    );
+    const current = getArtworkRect();
 
-    animateMotionValue(
-      artWidth,
-      rect.width,
-      {
-        duration,
-        ease: EASE,
-      }
-    );
+    const bounceWidth =
+      current.width * BOUNCE_SCALE;
+    const bounceHeight =
+      current.height * BOUNCE_SCALE;
 
-    animateMotionValue(
-      artHeight,
-      rect.height,
-      {
-        duration,
-        ease: EASE,
-      }
-    );
+    const bounceRect: Rect = {
+      left:
+        current.left -
+        (bounceWidth - current.width) / 2,
+      top:
+        current.top -
+        (bounceHeight - current.height) / 2,
+      width: bounceWidth,
+      height: bounceHeight,
+    };
+
+    const bounceAnimations = [
+      animateMotionValue(
+        artLeft,
+        bounceRect.left,
+        {
+          duration: BOUNCE_TIME,
+          ease: EASE,
+        }
+      ),
+      animateMotionValue(
+        artTop,
+        bounceRect.top,
+        {
+          duration: BOUNCE_TIME,
+          ease: EASE,
+        }
+      ),
+      animateMotionValue(
+        artWidth,
+        bounceRect.width,
+        {
+          duration: BOUNCE_TIME,
+          ease: EASE,
+        }
+      ),
+      animateMotionValue(
+        artHeight,
+        bounceRect.height,
+        {
+          duration: BOUNCE_TIME,
+          ease: EASE,
+        }
+      ),
+    ];
+
+    Promise.all(
+      bounceAnimations.map((animation) =>
+        animation.then(() => undefined)
+      )
+    )
+      .then(() => {
+        if (
+          artworkAnimationIdRef.current !==
+          animationId
+        ) {
+          return;
+        }
+
+        animateTo(
+          rect,
+          SETTLE_TIME
+        );
+      })
+      .catch(() => {
+        // Animation was interrupted.
+      });
   }
 
   /*
@@ -1037,6 +1141,14 @@ export default function VideoEditsPage() {
       return;
     }
 
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 767px)").matches
+    ) {
+      router.push(`/video-edits/${project.id}`);
+      return;
+    }
+
     const isTransitioning =
       animationPhaseRef.current !==
       "closed";
@@ -1336,7 +1448,8 @@ export default function VideoEditsPage() {
 
         animateArtworkRectTo(
           nextRect,
-          OPEN_DURATION
+          OPEN_DURATION,
+          true
         );
 
         setAnimationPhase(
@@ -1663,7 +1776,7 @@ export default function VideoEditsPage() {
                             transition={{
                               duration: 0,
                             }}
-                            className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                            className="h-full w-full object-cover scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
                             draggable={false}
                           />
                         </button>
@@ -1796,7 +1909,7 @@ export default function VideoEditsPage() {
                               transition={{
                                 duration: 0,
                               }}
-                              className="h-full w-full object-cover transition-transform duration-500 ease-in-out group-hover:scale-[1.03]"
+                              className="h-full w-full object-cover scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
                               draggable={false}
                             />
                           </button>
@@ -2398,31 +2511,8 @@ export default function VideoEditsPage() {
           <Footer borderTop={false} />
         </div>
 
-        <div className="grid w-full grid-cols-3 items-center px-4 py-5 md:hidden">
-          <a
-            href="https://mail.google.com/mail/?view=cm&fs=1&to=wrk@aruu.fr"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="justify-self-start whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            wrk@aruu.fr
-          </a>
-
-          <a
-            href="https://www.instagram.com/aruuforeal/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="justify-self-center whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            @aruuforeal
-          </a>
-
-          <a
-            href="tel:+916006087997"
-            className="justify-self-end whitespace-nowrap font-['Degular'] text-[17px] font-semibold leading-none tracking-[-0.05em] text-black"
-          >
-            +91 6006087997
-          </a>
+        <div className="md:hidden">
+          <MobileFooter />
         </div>
       </div>
 
