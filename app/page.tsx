@@ -17,10 +17,10 @@ export default function Home() {
           <img
             src="/video%20edits%20bg.png"
             alt=""
-            className="absolute inset-0 h-full w-full scale-110 object-cover saturate-[0.5] transition-all duration-500 ease-in-out group-hover:scale-[1.13] group-hover:saturate-100"
+            className="absolute inset-0 h-full w-full scale-[1.006] object-cover saturate-[0.5] contrast-[1.25] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:saturate-100 group-hover:contrast-[1.25]"
           />
 
-          <div className="relative z-10 flex items-center justify-center transition-transform duration-500 ease-in-out group-hover:scale-[0.96]">
+          <div className="relative z-10 flex items-center justify-center transition-transform duration-700 ease-out group-hover:scale-[0.96]">
             <img
               src="/video%20edits(1).svg"
               alt="Video Edits"
@@ -40,10 +40,10 @@ export default function Home() {
           <img
             src="/design%20bg.png"
             alt=""
-            className="absolute inset-0 h-full w-full scale-110 object-cover saturate-[0.5] transition-all duration-500 ease-in-out group-hover:scale-[1.13] group-hover:saturate-100"
+            className="absolute inset-0 h-full w-full scale-[1.006] object-cover saturate-[0.5] contrast-[1.25] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:saturate-100 group-hover:contrast-[1.25]"
           />
 
-          <div className="relative z-10 flex items-center justify-center transition-transform duration-500 ease-in-out group-hover:scale-[0.96]">
+          <div className="relative z-10 flex items-center justify-center transition-transform duration-700 ease-out group-hover:scale-[0.96]">
             <img
               src="/aja_bhidle.svg"
               alt="Design"

@@ -180,18 +180,26 @@ export default function MobileDesignProject({
                     type="button"
                     onClick={() => openProject(previousProjectId)}
                     aria-label="Previous project"
-                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[28px] leading-none transition-opacity hover:opacity-50"
+                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50"
                 >
-                    ‹
+                    <img
+                        src="/arrow-left.png"
+                        alt="Previous project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                    />
                 </button>
 
                 <button
                     type="button"
                     onClick={() => openProject(nextProjectId)}
                     aria-label="Next project"
-                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[28px] leading-none transition-opacity hover:opacity-50"
+                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50"
                 >
-                    ›
+                    <img
+                        src="/arrow.png"
+                        alt="Next project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                    />
                 </button>
             </div>
 
@@ -224,18 +232,26 @@ export default function MobileDesignProject({
                             type="button"
                             onClick={previousImage}
                             aria-label="Previous image"
-                            className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center font-['Degular'] text-[32px] leading-none text-black transition-opacity hover:opacity-50"
+                            className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-black bg-white/90 transition-opacity hover:opacity-50"
                         >
-                            ‹
+                            <img
+                                src="/arrow-left.png"
+                                alt="Previous image"
+                                className="h-4 w-4 object-contain select-none pointer-events-none"
+                            />
                         </button>
 
                         <button
                             type="button"
                             onClick={nextImage}
                             aria-label="Next image"
-                            className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center font-['Degular'] text-[32px] leading-none text-black transition-opacity hover:opacity-50"
+                            className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-black bg-white/90 transition-opacity hover:opacity-50"
                         >
-                            ›
+                            <img
+                                src="/arrow.png"
+                                alt="Next image"
+                                className="h-4 w-4 object-contain select-none pointer-events-none"
+                            />
                         </button>
                     </>
                 )}

@@ -123,128 +123,100 @@ function buildVideoMasonry(
   if (!containerWidth || projects.length === 0) return placements;
 
   /*
-   * Desktop stays a strict 5-unit system.
+   * The layout is order-driven.
    *
-   * A portrait/square uses 1 unit and a landscape uses 2 units.
-   * We dynamically choose which remaining project goes into the
-   * lowest available pocket, so the five-unit grid can close gaps
-   * instead of blindly following one fixed skyline order.
+   * The saved `position` order from Supabase is authoritative.
+   * Each project is placed in that order into the earliest valid
+   * 5-unit pocket.
    *
-   * The five-unit width never changes and videos keep their real
-   * dimensions. Only the packing order/vertical position changes.
+   * Previously this function searched ALL remaining projects for the
+   * lowest available pocket. That meant changing `position` in Admin
+   * could still produce almost the same visual arrangement because
+   * the masonry algorithm was free to reorder projects spatially.
+   *
+   * Do not change this back to a global "best remaining project"
+   * search — the Admin rearrange layout controls the public order.
    */
   const GRID_COLUMNS = 5;
   const columnWidth = containerWidth / GRID_COLUMNS;
-  const skyline = Array.from({ length: GRID_COLUMNS }, () => 0);
-  const remaining = projects.map((project, index) => ({ project, index }));
+  const skyline = Array.from(
+    { length: GRID_COLUMNS },
+    () => 0
+  );
 
-  while (remaining.length > 0) {
-    let best:
-      | {
-        remainingIndex: number;
-        startColumn: number;
-        top: number;
-        width: number;
-        height: number;
-        score: [number, number, number, number];
-      }
-      | null = null;
+  for (const project of projects) {
+    const ratio = Math.max(
+      0.01,
+      getVideoRatio(project, dimensions)
+    );
+
+    const columnSpan = Math.min(
+      GRID_COLUMNS,
+      getVideoTileSpan(ratio)
+    );
+
+    // Landscape = exactly 2 horizontal grid units.
+    // Height remains proportional so the complete video stays visible.
+    const width = columnWidth * columnSpan;
+    const height = width / ratio;
+
+    let bestStart = 0;
+    let bestTop = Number.POSITIVE_INFINITY;
+    let bestBalance = Number.POSITIVE_INFINITY;
 
     for (
-      let candidateIndex = 0;
-      candidateIndex < remaining.length;
-      candidateIndex += 1
+      let startColumn = 0;
+      startColumn <= GRID_COLUMNS - columnSpan;
+      startColumn += 1
     ) {
-      const project = remaining[candidateIndex].project;
-      const ratio = Math.max(
-        0.01,
-        getVideoRatio(project, dimensions)
-      );
-
-      const columnSpan = getVideoTileSpan(ratio);
-      const width = columnWidth * columnSpan;
-      const height = width / ratio;
-
-      for (
-        let startColumn = 0;
-        startColumn <= GRID_COLUMNS - columnSpan;
-        startColumn += 1
-      ) {
-        const occupied = skyline.slice(
+      const top = Math.max(
+        ...skyline.slice(
           startColumn,
           startColumn + columnSpan
-        );
+        )
+      );
 
-        const top = Math.max(...occupied);
-        const nextSkyline = [...skyline];
-        const bottom = top + height;
+      const nextSkyline = [...skyline];
+      const bottom = top + height;
 
-        for (
-          let column = startColumn;
-          column < startColumn + columnSpan;
-          column += 1
-        ) {
-          nextSkyline[column] = bottom;
-        }
+      for (
+        let column = startColumn;
+        column < startColumn + columnSpan;
+        column += 1
+      ) {
+        nextSkyline[column] = bottom;
+      }
 
-        const newMax = Math.max(...nextSkyline);
-        const newMin = Math.min(...nextSkyline);
-        const spread = newMax - newMin;
+      const balance =
+        Math.max(...nextSkyline) -
+        Math.min(...nextSkyline);
 
-        const score: [number, number, number, number] = [
-          top,
-          spread,
-          newMax,
-          remaining[candidateIndex].index,
-        ];
-
-        if (
-          !best ||
-          score[0] < best.score[0] ||
-          (score[0] === best.score[0] &&
-            score[1] < best.score[1]) ||
-          (score[0] === best.score[0] &&
-            score[1] === best.score[1] &&
-            score[2] < best.score[2]) ||
-          (score[0] === best.score[0] &&
-            score[1] === best.score[1] &&
-            score[2] === best.score[2] &&
-            score[3] < best.score[3])
-        ) {
-          best = {
-            remainingIndex: candidateIndex,
-            startColumn,
-            top,
-            width,
-            height,
-            score,
-          };
-        }
+      if (
+        top < bestTop ||
+        (top === bestTop &&
+          balance < bestBalance) ||
+        (top === bestTop &&
+          balance === bestBalance &&
+          startColumn < bestStart)
+      ) {
+        bestTop = top;
+        bestStart = startColumn;
+        bestBalance = balance;
       }
     }
 
-    if (!best) break;
-
-    const chosen = remaining.splice(
-      best.remainingIndex,
-      1
-    )[0].project;
-
-    placements[chosen.id] = {
-      left: best.startColumn * columnWidth,
-      top: best.top,
-      width: best.width,
-      height: best.height,
+    placements[project.id] = {
+      left: bestStart * columnWidth,
+      top: bestTop,
+      width,
+      height,
     };
 
-    const bottom = best.top + best.height;
-    const span = Math.round(
-      best.width / columnWidth
-    );
+    const bottom = bestTop + height;
 
     for (
-      let column = best.startColumn;
-      column < best.startColumn + span;
+      let column = bestStart;
+      column < bestStart + columnSpan;
       column += 1
     ) {
       skyline[column] = bottom;
@@ -861,6 +833,55 @@ export default function VideoEditsPage() {
     }
 
     loadProjects();
+
+    const channel = supabase
+      .channel("video-project-publish-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "projects",
+          filter: "category=eq.video-edit",
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            setProjects((current) =>
+              current.filter(
+                (project) => project.id !== Number(payload.old.id)
+              )
+            );
+            return;
+          }
+
+          const project = payload.new as Project;
+
+          setProjects((current) => {
+            if (!project.published) {
+              return current.filter(
+                (item) => item.id !== project.id
+              );
+            }
+
+            const next = current.some(
+              (item) => item.id === project.id
+            )
+              ? current.map((item) =>
+                item.id === project.id ? project : item
+              )
+              : [...current, project];
+
+            return next.sort(
+              (a, b) => a.position - b.position
+            );
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   /*
@@ -1262,7 +1283,7 @@ export default function VideoEditsPage() {
     );
 
     setViewerPlaying(true);
-    setViewerMuted(true);
+    setViewerMuted(false);
 
     document.body.style.overflow =
       "hidden";
@@ -2225,9 +2246,13 @@ export default function VideoEditsPage() {
                       onClick={() => navigateProject(-1)}
                       aria-label="Previous project"
                       disabled={projects.length < 2 || animationPhase === "closing"}
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12 max-md:text-[24px]"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12"
                     >
-                      ‹
+                      <img
+                        src="/arrow-left.png"
+                        alt="Previous project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                      />
                     </button>
 
                     <button
@@ -2235,9 +2260,13 @@ export default function VideoEditsPage() {
                       onClick={() => navigateProject(1)}
                       aria-label="Next project"
                       disabled={projects.length < 2 || animationPhase === "closing"}
-                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[24px] leading-none transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12 max-md:text-[24px]"
+                      className="flex h-full w-[52px] shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50 disabled:pointer-events-none disabled:opacity-30 max-md:w-12"
                     >
-                      ›
+                      <img
+                        src="/arrow.png"
+                        alt="Next project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                      />
                     </button>
                   </div>
 

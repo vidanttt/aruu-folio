@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Project = {
@@ -17,25 +18,21 @@ const STORAGE_LIMIT = 1024 * 1024 * 1024; // 1 GB
 
 export default function AdminPage() {
     const supabase = createClient();
+    const router = useRouter();
 
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedCategory, setSelectedCategory] =
         useState<Category>("video-edit");
 
     const [loading, setLoading] = useState(true);
-
     const [storageUsed, setStorageUsed] = useState(0);
     const [storageLoading, setStorageLoading] = useState(true);
 
     function formatStorage(bytes: number) {
-        if (bytes < 1024 * 1024) {
-            return `${(bytes / 1024).toFixed(1)} KB`;
-        }
-
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
         if (bytes < 1024 * 1024 * 1024) {
             return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
         }
-
         return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
     }
 
@@ -44,17 +41,12 @@ export default function AdminPage() {
 
         const { data, error } = await supabase
             .from("projects")
-            .select(
-                "id, name, client, category, published"
-            )
+            .select("id, name, client, category, published")
             .eq("category", selectedCategory)
             .order("position", { ascending: true });
 
-        if (!error) {
-            setProjects(data || []);
-        } else {
-            console.error("Project loading error:", error);
-        }
+        if (!error) setProjects(data || []);
+        else console.error("Project loading error:", error);
 
         setLoading(false);
     }
@@ -66,34 +58,20 @@ export default function AdminPage() {
             "get_aruu_storage_usage"
         );
 
-        if (!error) {
-            setStorageUsed(Number(data) || 0);
-        } else {
-            console.error(
-                "Storage usage error:",
-                error
-            );
-        }
+        if (!error) setStorageUsed(Number(data) || 0);
+        else console.error("Storage usage error:", error);
 
         setStorageLoading(false);
     }
 
-    async function togglePublished(
-        id: number,
-        currentStatus: boolean
-    ) {
+    async function togglePublished(id: number, currentStatus: boolean) {
         const { error } = await supabase
             .from("projects")
-            .update({
-                published: !currentStatus,
-            })
+            .update({ published: !currentStatus })
             .eq("id", id);
 
         if (error) {
-            console.error(
-                "Publish update error:",
-                error
-            );
+            console.error("Publish update error:", error);
             return;
         }
 
@@ -107,190 +85,15 @@ export default function AdminPage() {
 
         if (!confirmed) return;
 
-        // ==================================================
-        // 1. GET PROJECT + ALL ASSOCIATED FILE REFERENCES
-        // ==================================================
-
-        const { data: project, error: fetchError } =
-            await supabase
-                .from("projects")
-                .select(
-                    "id, storage_paths, video_url, thumbnail_url, image_urls"
-                )
-                .eq("id", id)
-                .single();
-
-        if (fetchError || !project) {
-            console.error(
-                "Failed to fetch project before deletion:",
-                fetchError
-            );
-
-            alert(
-                `Could not find the project.\n\n${fetchError?.message || "Unknown error"
-                }`
-            );
-
-            return;
-        }
-
-        const storagePaths = new Set<string>();
-
-        // ==================================================
-        // 2. NEW PROJECTS
-        // storage_paths contains exact Storage paths
-        // ==================================================
-
-        if (Array.isArray(project.storage_paths)) {
-            for (const path of project.storage_paths) {
-                if (
-                    typeof path === "string" &&
-                    path.trim()
-                ) {
-                    storagePaths.add(path);
-                }
-            }
-        }
-
-        // ==================================================
-        // 3. OLD PROJECTS
-        // Extract Storage paths from public URLs
-        // ==================================================
-
-        function extractStoragePath(
-            url: string | null
-        ) {
-            if (!url) return null;
-
-            const marker =
-                "/storage/v1/object/public/aruu/";
-
-            const index = url.indexOf(marker);
-
-            if (index === -1) return null;
-
-            return decodeURIComponent(
-                url.slice(index + marker.length)
-            );
-        }
-
-        // Video
-        const videoPath =
-            extractStoragePath(project.video_url);
-
-        if (videoPath) {
-            storagePaths.add(videoPath);
-        }
-
-        // Thumbnail / preview
-        const thumbnailPath =
-            extractStoragePath(
-                project.thumbnail_url
-            );
-
-        if (thumbnailPath) {
-            storagePaths.add(thumbnailPath);
-        }
-
-        // Design images
-        if (Array.isArray(project.image_urls)) {
-            for (const imageUrl of project.image_urls) {
-                if (
-                    typeof imageUrl !== "string"
-                ) {
-                    continue;
-                }
-
-                const imagePath =
-                    extractStoragePath(imageUrl);
-
-                if (imagePath) {
-                    storagePaths.add(imagePath);
-                }
-            }
-        }
-
-        const pathsToDelete =
-            Array.from(storagePaths);
-
-        console.log(
-            "Files to delete:",
-            pathsToDelete
-        );
-
-        // ==================================================
-        // 4. DELETE STORAGE FILES
-        // ==================================================
-
-        if (pathsToDelete.length > 0) {
-            const { error: storageError } =
-                await supabase.storage
-                    .from("aruu")
-                    .remove(pathsToDelete);
-
-            if (storageError) {
-                console.error(
-                    "Storage deletion error:",
-                    storageError
-                );
-
-                alert(
-                    `Storage deletion failed:\n\n${storageError.message}`
-                );
-
-                return;
-            }
-        }
-
-        // ==================================================
-        // 5. DELETE DATABASE ROW
-        // .select() lets us VERIFY that a row was deleted
-        // ==================================================
-
-        const {
-            data: deletedProject,
-            error: deleteError,
-        } = await supabase
+        const { error } = await supabase
             .from("projects")
             .delete()
-            .eq("id", id)
-            .select("id")
-            .maybeSingle();
+            .eq("id", id);
 
-        if (deleteError) {
-            console.error(
-                "Database deletion error:",
-                deleteError
-            );
-
-            alert(
-                `Database deletion failed:\n\n${deleteError.message}`
-            );
-
+        if (error) {
+            console.error("Delete project error:", error);
             return;
         }
-
-        // If no row comes back, the DELETE affected nothing.
-        if (!deletedProject) {
-            console.error(
-                "No database row was deleted."
-            );
-
-            alert(
-                "The Storage files were removed, but the project database row was NOT deleted.\n\nCheck your Supabase DELETE RLS policy for the projects table."
-            );
-
-            return;
-        }
-
-        console.log(
-            "Project deleted successfully:",
-            deletedProject.id
-        );
-
-        // ==================================================
-        // 6. REFRESH EVERYTHING
-        // ==================================================
 
         await loadProjects();
         await loadStorageUsage();
@@ -314,37 +117,25 @@ export default function AdminPage() {
         100
     );
 
-    const storageRemaining = Math.max(
-        STORAGE_LIMIT - storageUsed,
-        0
-    );
+    const storageRemaining = Math.max(STORAGE_LIMIT - storageUsed, 0);
 
     return (
         <main className="min-h-screen bg-white px-6 py-8 text-black md:px-12">
-            {/* HEADER */}
-
             <header className="flex flex-col gap-6 border-b border-black pb-6 md:flex-row md:items-center md:justify-between">
                 <div>
                     <h1 className="text-4xl font-bold tracking-tight">
                         ARUU ADMIN
                     </h1>
-
-                    <p className="mt-1 text-sm">
-                        Project Manager
-                    </p>
+                    <p className="mt-1 text-sm">Project Manager</p>
                 </div>
 
                 <div className="flex gap-3">
                     <button
-                        onClick={() =>
-                        (window.location.href =
-                            "/admin/new")
-                        }
+                        onClick={() => router.push("/admin/new")}
                         className="bg-black px-5 py-3 text-sm font-medium text-white"
                     >
                         + Add Project
                     </button>
-
                     <button
                         onClick={logout}
                         className="border border-black px-5 py-3 text-sm font-medium"
@@ -354,24 +145,16 @@ export default function AdminPage() {
                 </div>
             </header>
 
-            {/* STORAGE */}
-
             <section className="mt-8 border border-black p-5">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <h2 className="text-lg font-semibold">
-                            STORAGE
-                        </h2>
-
-                        <p className="mt-1 text-sm">
-                            aruu bucket
-                        </p>
+                        <h2 className="text-lg font-semibold">STORAGE</h2>
+                        <p className="mt-1 text-sm">aruu bucket</p>
                     </div>
 
                     {!storageLoading && (
                         <p className="text-sm font-medium">
-                            {formatStorage(storageUsed)}{" "}
-                            / 1 GB
+                            {formatStorage(storageUsed)} / 1 GB
                         </p>
                     )}
                 </div>
@@ -379,85 +162,68 @@ export default function AdminPage() {
                 <div className="mt-4 h-2 w-full bg-neutral-200">
                     <div
                         className="h-full bg-black transition-all duration-500"
-                        style={{
-                            width: `${storagePercentage}%`,
-                        }}
+                        style={{ width: `${storagePercentage}%` }}
                     />
                 </div>
 
                 {!storageLoading ? (
                     <div className="mt-2 flex justify-between text-xs">
-                        <span>
-                            {formatStorage(storageUsed)}{" "}
-                            used
-                        </span>
-
-                        <span>
-                            {formatStorage(
-                                storageRemaining
-                            )}{" "}
-                            remaining
-                        </span>
+                        <span>{formatStorage(storageUsed)} used</span>
+                        <span>{formatStorage(storageRemaining)} remaining</span>
                     </div>
                 ) : (
-                    <p className="mt-2 text-xs">
-                        Calculating storage...
-                    </p>
+                    <p className="mt-2 text-xs">Calculating storage...</p>
                 )}
             </section>
 
             {/* CATEGORY SWITCHER */}
-
             <section className="mt-10">
                 <div className="grid grid-cols-2 border border-black">
                     <button
-                        onClick={() =>
-                            setSelectedCategory(
-                                "video-edit"
-                            )
-                        }
-                        className={`py-4 text-sm font-semibold transition ${selectedCategory ===
-                            "video-edit"
-                            ? "bg-black text-white"
-                            : "bg-white text-black hover:bg-neutral-100"
+                        onClick={() => setSelectedCategory("video-edit")}
+                        className={`py-4 text-sm font-semibold transition ${selectedCategory === "video-edit"
+                                ? "bg-black text-white"
+                                : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         VIDEO EDITS
                     </button>
 
                     <button
-                        onClick={() =>
-                            setSelectedCategory(
-                                "design"
-                            )
-                        }
-                        className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory ===
-                            "design"
-                            ? "bg-black text-white"
-                            : "bg-white text-black hover:bg-neutral-100"
+                        onClick={() => setSelectedCategory("design")}
+                        className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory === "design"
+                                ? "bg-black text-white"
+                                : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         DESIGN
                     </button>
                 </div>
+
+                {/* REARRANGE BUTTON */}
+                <button
+                    type="button"
+                    onClick={() =>
+                        router.push(
+                            `/admin/rearrange?category=${selectedCategory}`
+                        )
+                    }
+                    className="mt-3 w-full border border-black py-3 text-sm font-semibold transition hover:bg-black hover:text-white"
+                >
+                    ↕ REARRANGE {selectedCategory === "video-edit" ? "VIDEO EDITS" : "DESIGN"}
+                </button>
             </section>
 
             {/* PROJECTS */}
-
             <section className="mt-8">
                 <div className="mb-5 flex items-center justify-between">
                     <h2 className="text-2xl font-semibold">
-                        {selectedCategory ===
-                            "video-edit"
+                        {selectedCategory === "video-edit"
                             ? "Video Edits"
                             : "Design"}
                     </h2>
-
                     <span className="text-sm">
-                        {projects.length} project
-                        {projects.length !== 1
-                            ? "s"
-                            : ""}
+                        {projects.length} project{projects.length !== 1 ? "s" : ""}
                     </span>
                 </div>
 
@@ -466,19 +232,10 @@ export default function AdminPage() {
                 ) : projects.length === 0 ? (
                     <div className="border border-black p-10 text-center">
                         <p className="mb-4">
-                            No{" "}
-                            {selectedCategory ===
-                                "video-edit"
-                                ? "video edits"
-                                : "design projects"}{" "}
-                            yet.
+                            No {selectedCategory === "video-edit" ? "video edits" : "design projects"} yet.
                         </p>
-
                         <button
-                            onClick={() =>
-                            (window.location.href =
-                                "/admin/new")
-                            }
+                            onClick={() => router.push("/admin/new")}
                             className="bg-black px-5 py-3 text-white"
                         >
                             Add your first project
@@ -495,11 +252,8 @@ export default function AdminPage() {
                                     <h3 className="text-xl font-semibold">
                                         {project.name}
                                     </h3>
-
                                     <p className="mt-1 text-sm">
-                                        {project.client}{" "}
-                                        ·{" "}
-                                        {project.category}
+                                        {project.client} · {project.category}
                                     </p>
                                 </div>
 
@@ -512,8 +266,8 @@ export default function AdminPage() {
                                             )
                                         }
                                         className={`border border-black px-4 py-2 text-sm ${project.published
-                                            ? "bg-black text-white"
-                                            : "bg-white text-black"
+                                                ? "bg-black text-white"
+                                                : "bg-white text-black"
                                             }`}
                                     >
                                         {project.published
@@ -523,7 +277,7 @@ export default function AdminPage() {
 
                                     <button
                                         onClick={() =>
-                                            (window.location.href = `/admin/edit/${project.id}`)
+                                            router.push(`/admin/edit/${project.id}`)
                                         }
                                         className="border border-black px-4 py-2 text-sm"
                                     >
@@ -531,11 +285,7 @@ export default function AdminPage() {
                                     </button>
 
                                     <button
-                                        onClick={() =>
-                                            deleteProject(
-                                                project.id
-                                            )
-                                        }
+                                        onClick={() => deleteProject(project.id)}
                                         className="bg-black px-4 py-2 text-sm text-white"
                                     >
                                         Delete

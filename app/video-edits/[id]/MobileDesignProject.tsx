@@ -140,18 +140,26 @@ export default function MobileVideoEditProject({
                     type="button"
                     onClick={() => openProject(previousProjectId)}
                     aria-label="Previous project"
-                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[28px] leading-none transition-opacity hover:opacity-50"
+                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50"
                 >
-                    ‹
+                    <img
+                        src="/arrow-left.png"
+                        alt="Previous project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                    />
                 </button>
 
                 <button
                     type="button"
                     onClick={() => openProject(nextProjectId)}
                     aria-label="Next project"
-                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black font-['Degular'] text-[28px] leading-none transition-opacity hover:opacity-50"
+                    className="flex h-full w-14 shrink-0 items-center justify-center border-l border-black transition-opacity hover:opacity-50"
                 >
-                    ›
+                    <img
+                        src="/arrow.png"
+                        alt="Next project"
+                        className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
+                    />
                 </button>
             </div>
 
