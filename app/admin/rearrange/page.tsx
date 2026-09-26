@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -241,7 +241,7 @@ function mediaFor(project: Project) {
     return project.thumbnail_url;
 }
 
-export default function RearrangePage() {
+function RearrangeContent() {
     const supabase = createClient();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -737,5 +737,13 @@ export default function RearrangePage() {
                 </>
             )}
         </main>
+    );
+}
+
+export default function RearrangePage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-white p-8 text-sm">Loading layout...</div>}>
+            <RearrangeContent />
+        </Suspense>
     );
 }
