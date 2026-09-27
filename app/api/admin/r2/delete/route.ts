@@ -55,16 +55,6 @@ export async function POST(request: Request) {
             );
         }
 
-        // Also clean up legacy Supabase Storage.
-        const { error: supabaseStorageError } = await supabase.storage
-            .from("aruu")
-            .remove(paths);
-
-        if (supabaseStorageError) {
-            throw new Error(
-                `Supabase Storage cleanup failed: ${supabaseStorageError.message}`
-            );
-        }
 
         return NextResponse.json({
             deleted: paths.length,
