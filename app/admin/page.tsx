@@ -54,14 +54,26 @@ export default function AdminPage() {
     async function loadStorageUsage() {
         setStorageLoading(true);
 
-        const { data, error } = await supabase.rpc(
-            "get_aruu_storage_usage"
-        );
+        try {
+            const response = await fetch("/api/admin/r2/usage", {
+                method: "GET",
+                cache: "no-store",
+            });
 
-        if (!error) setStorageUsed(Number(data) || 0);
-        else console.error("Storage usage error:", error);
+            const data = await response.json();
 
-        setStorageLoading(false);
+            if (!response.ok) {
+                throw new Error(
+                    data.error || "Failed to load R2 storage usage."
+                );
+            }
+
+            setStorageUsed(Number(data.bytes) || 0);
+        } catch (error) {
+            console.error("R2 storage usage error:", error);
+        } finally {
+            setStorageLoading(false);
+        }
     }
 
     async function togglePublished(id: number, currentStatus: boolean) {
@@ -85,18 +97,70 @@ export default function AdminPage() {
 
         if (!confirmed) return;
 
-        const { error } = await supabase
-            .from("projects")
-            .delete()
-            .eq("id", id);
+        try {
+            // Get the media paths before deleting the database row.
+            const { data: project, error: projectError } = await supabase
+                .from("projects")
+                .select("storage_paths")
+                .eq("id", id)
+                .single();
 
-        if (error) {
+            if (projectError) {
+                throw new Error(
+                    `Could not load project media: ${projectError.message}`
+                );
+            }
+
+            const storagePaths: string[] = Array.isArray(project?.storage_paths)
+                ? project.storage_paths.filter(
+                    (path): path is string => typeof path === "string"
+                )
+                : [];
+
+            // Delete media from both R2 and legacy Supabase Storage.
+            // This is intentionally done before deleting the DB row so a
+            // storage failure does not silently leave an orphaned project.
+            if (storagePaths.length > 0) {
+                const cleanupResponse = await fetch("/api/admin/r2/delete", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        paths: storagePaths,
+                    }),
+                });
+
+                const cleanupData = await cleanupResponse.json();
+
+                if (!cleanupResponse.ok) {
+                    throw new Error(
+                        cleanupData.error || "Failed to delete project media."
+                    );
+                }
+            }
+
+            const { error } = await supabase
+                .from("projects")
+                .delete()
+                .eq("id", id);
+
+            if (error) {
+                throw new Error(
+                    `Delete project error: ${error.message}`
+                );
+            }
+
+            await loadProjects();
+            await loadStorageUsage();
+        } catch (error) {
             console.error("Delete project error:", error);
-            return;
+            alert(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to delete project."
+            );
         }
-
-        await loadProjects();
-        await loadStorageUsage();
     }
 
     async function logout() {
@@ -112,10 +176,7 @@ export default function AdminPage() {
         loadStorageUsage();
     }, []);
 
-    const storagePercentage = Math.min(
-        (storageUsed / STORAGE_LIMIT) * 100,
-        100
-    );
+    const storagePercentage = Math.min((storageUsed / (10 * 1024 * 1024 * 1024)) * 100, 100);
 
     const storageRemaining = Math.max(STORAGE_LIMIT - storageUsed, 0);
 
@@ -154,7 +215,7 @@ export default function AdminPage() {
 
                     {!storageLoading && (
                         <p className="text-sm font-medium">
-                            {formatStorage(storageUsed)} / 1 GB
+                            {formatStorage(storageUsed)} / 10 GB
                         </p>
                     )}
                 </div>
@@ -176,14 +237,13 @@ export default function AdminPage() {
                 )}
             </section>
 
-            {/* CATEGORY SWITCHER */}
             <section className="mt-10">
                 <div className="grid grid-cols-2 border border-black">
                     <button
                         onClick={() => setSelectedCategory("video-edit")}
                         className={`py-4 text-sm font-semibold transition ${selectedCategory === "video-edit"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         VIDEO EDITS
@@ -192,15 +252,14 @@ export default function AdminPage() {
                     <button
                         onClick={() => setSelectedCategory("design")}
                         className={`border-l border-black py-4 text-sm font-semibold transition ${selectedCategory === "design"
-                                ? "bg-black text-white"
-                                : "bg-white text-black hover:bg-neutral-100"
+                            ? "bg-black text-white"
+                            : "bg-white text-black hover:bg-neutral-100"
                             }`}
                     >
                         DESIGN
                     </button>
                 </div>
 
-                {/* REARRANGE BUTTON */}
                 <button
                     type="button"
                     onClick={() =>
@@ -210,11 +269,13 @@ export default function AdminPage() {
                     }
                     className="mt-3 w-full border border-black py-3 text-sm font-semibold transition hover:bg-black hover:text-white"
                 >
-                    ↕ REARRANGE {selectedCategory === "video-edit" ? "VIDEO EDITS" : "DESIGN"}
+                    ↕ REARRANGE{" "}
+                    {selectedCategory === "video-edit"
+                        ? "VIDEO EDITS"
+                        : "DESIGN"}
                 </button>
             </section>
 
-            {/* PROJECTS */}
             <section className="mt-8">
                 <div className="mb-5 flex items-center justify-between">
                     <h2 className="text-2xl font-semibold">
@@ -223,7 +284,8 @@ export default function AdminPage() {
                             : "Design"}
                     </h2>
                     <span className="text-sm">
-                        {projects.length} project{projects.length !== 1 ? "s" : ""}
+                        {projects.length} project
+                        {projects.length !== 1 ? "s" : ""}
                     </span>
                 </div>
 
@@ -232,7 +294,11 @@ export default function AdminPage() {
                 ) : projects.length === 0 ? (
                     <div className="border border-black p-10 text-center">
                         <p className="mb-4">
-                            No {selectedCategory === "video-edit" ? "video edits" : "design projects"} yet.
+                            No{" "}
+                            {selectedCategory === "video-edit"
+                                ? "video edits"
+                                : "design projects"}{" "}
+                            yet.
                         </p>
                         <button
                             onClick={() => router.push("/admin/new")}
@@ -266,8 +332,8 @@ export default function AdminPage() {
                                             )
                                         }
                                         className={`border border-black px-4 py-2 text-sm ${project.published
-                                                ? "bg-black text-white"
-                                                : "bg-white text-black"
+                                            ? "bg-black text-white"
+                                            : "bg-white text-black"
                                             }`}
                                     >
                                         {project.published
@@ -277,7 +343,9 @@ export default function AdminPage() {
 
                                     <button
                                         onClick={() =>
-                                            router.push(`/admin/edit/${project.id}`)
+                                            router.push(
+                                                `/admin/edit/${project.id}`
+                                            )
                                         }
                                         className="border border-black px-4 py-2 text-sm"
                                     >
@@ -285,7 +353,9 @@ export default function AdminPage() {
                                     </button>
 
                                     <button
-                                        onClick={() => deleteProject(project.id)}
+                                        onClick={() =>
+                                            deleteProject(project.id)
+                                        }
                                         className="bg-black px-4 py-2 text-sm text-white"
                                     >
                                         Delete

@@ -79,9 +79,29 @@ export default function EditProjectPage() {
                 return;
             }
 
-            const imageUrls: string[] = Array.isArray(data.image_urls)
-                ? data.image_urls
-                : [];
+            /*
+             * All media is now served from R2.
+             *
+             * Existing projects may still have old Supabase Storage URLs in
+             * the database from before the migration. The actual objects
+             * were copied to R2 using the same paths, so normalize those
+             * URLs to the R2 custom domain when loading the editor.
+             */
+            const normalizeR2Url = (url: string) => {
+                const path = extractStoragePath(url);
+
+                if (!path) return url;
+
+                return `https://media.aruu.fr/${path}`;
+            };
+
+            const imageUrls: string[] = (
+                Array.isArray(data.image_urls) ? data.image_urls : []
+            ).map((url: string) => normalizeR2Url(url));
+
+            const thumbnailUrl = data.thumbnail_url
+                ? normalizeR2Url(data.thumbnail_url)
+                : "";
 
             setForm({
                 name: data.name || "",
@@ -93,19 +113,24 @@ export default function EditProjectPage() {
                 project_date: data.project_date || "",
                 category: data.category || "video-edit",
                 description: data.description || "",
-                thumbnail_url: data.thumbnail_url || "",
+                thumbnail_url: thumbnailUrl,
                 published: data.published || false,
             });
 
             setOriginalImageUrls(imageUrls);
-            const storedPaths: string[] = Array.isArray(data.storage_paths)
-                ? data.storage_paths
-                : [];
+
+            const storedPaths: string[] = (
+                Array.isArray(data.storage_paths)
+                    ? data.storage_paths
+                    : []
+            )
+                .map((path: string) => extractStoragePath(path) || path)
+                .filter(Boolean);
 
             const fallbackPaths = [
                 ...imageUrls,
-                ...(data.category === "video-edit" && data.thumbnail_url
-                    ? [data.thumbnail_url]
+                ...(data.category === "video-edit" && thumbnailUrl
+                    ? [thumbnailUrl]
                     : []),
             ]
                 .map(extractStoragePath)
@@ -249,17 +274,60 @@ export default function EditProjectPage() {
     }
 
     function extractStoragePath(url: string) {
-        const marker = "/storage/v1/object/public/aruu/";
+        const markers = [
+            "/storage/v1/object/public/aruu/",
+            "https://media.aruu.fr/",
+        ];
 
-        const index = url.indexOf(marker);
+        for (const marker of markers) {
+            const index = url.indexOf(marker);
 
-        if (index === -1) {
-            return null;
+            if (index !== -1) {
+                return decodeURIComponent(url.slice(index + marker.length));
+            }
         }
 
-        return decodeURIComponent(
-            url.slice(index + marker.length)
-        );
+        return null;
+    }
+
+    async function uploadToR2(file: File, path: string) {
+        const presignResponse = await fetch("/api/admin/r2/presign", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                path,
+                contentType: file.type || "application/octet-stream",
+            }),
+        });
+
+        const presignData = await presignResponse.json();
+
+        if (!presignResponse.ok) {
+            throw new Error(
+                presignData.error || "Failed to create R2 upload URL."
+            );
+        }
+
+        const uploadResponse = await fetch(presignData.uploadUrl, {
+            method: "PUT",
+            headers: {
+                "Content-Type": file.type || "application/octet-stream",
+            },
+            body: file,
+        });
+
+        if (!uploadResponse.ok) {
+            throw new Error(
+                `Upload failed with status ${uploadResponse.status}.`
+            );
+        }
+
+        return {
+            url: presignData.publicUrl as string,
+            path: presignData.path as string,
+        };
     }
 
     async function uploadDesignImage(
@@ -274,27 +342,7 @@ export default function EditProjectPage() {
         const imagePath =
             `designs/${Date.now()}-${index + 1}-${safeImageName}`;
 
-        const { error: uploadError } = await supabase.storage
-            .from("aruu")
-            .upload(imagePath, file, {
-                cacheControl: "3600",
-                upsert: false,
-            });
-
-        if (uploadError) {
-            throw new Error(
-                `Image upload failed: ${uploadError.message}`
-            );
-        }
-
-        const { data } = supabase.storage
-            .from("aruu")
-            .getPublicUrl(imagePath);
-
-        return {
-            url: data.publicUrl,
-            path: imagePath,
-        };
+        return uploadToR2(file, imagePath);
     }
 
     async function handleSubmit(
@@ -371,24 +419,12 @@ export default function EditProjectPage() {
                     const previewPath =
                         `previews/${Date.now()}-${safePreviewName}`;
 
-                    const { error: uploadError } = await supabase.storage
-                        .from("aruu")
-                        .upload(previewPath, previewVideo.file, {
-                            cacheControl: "3600",
-                            upsert: false,
-                        });
+                    const uploaded = await uploadToR2(
+                        previewVideo.file,
+                        previewPath
+                    );
 
-                    if (uploadError) {
-                        throw new Error(
-                            `Preview video upload failed: ${uploadError.message}`
-                        );
-                    }
-
-                    const { data: previewData } = supabase.storage
-                        .from("aruu")
-                        .getPublicUrl(previewPath);
-
-                    finalThumbnailUrl = previewData.publicUrl;
+                    finalThumbnailUrl = uploaded.url;
                     finalStoragePaths = [previewPath];
                 } else {
                     finalThumbnailUrl = form.thumbnail_url || null;
@@ -496,14 +532,31 @@ export default function EditProjectPage() {
             );
 
             if (pathsToDelete.length > 0) {
-                const { error: removeError } = await supabase.storage
-                    .from("aruu")
-                    .remove(pathsToDelete);
+                try {
+                    const deleteResponse = await fetch(
+                        "/api/admin/r2/delete",
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                paths: pathsToDelete,
+                            }),
+                        }
+                    );
 
-                if (removeError) {
+                    if (!deleteResponse.ok) {
+                        const deleteData = await deleteResponse.json();
+                        console.error(
+                            "R2 storage cleanup error:",
+                            deleteData.error || "Failed to delete files"
+                        );
+                    }
+                } catch (deleteError) {
                     console.error(
-                        "Storage cleanup error:",
-                        removeError
+                        "R2 storage cleanup error:",
+                        deleteError
                     );
                 }
             }

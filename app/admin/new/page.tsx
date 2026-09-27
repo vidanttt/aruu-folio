@@ -114,6 +114,56 @@ export default function NewProjectPage() {
         setDraggingImageIndex(targetIndex);
     }
 
+    async function uploadToR2(file: File, path: string) {
+        const presignResponse = await fetch(
+            "/api/admin/r2/presign",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    path,
+                    contentType:
+                        file.type || "application/octet-stream",
+                }),
+            }
+        );
+
+        const presignData = await presignResponse.json();
+
+        if (!presignResponse.ok) {
+            throw new Error(
+                presignData.error ||
+                "Failed to create R2 upload URL."
+            );
+        }
+
+        const uploadResponse = await fetch(
+            presignData.uploadUrl,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type":
+                        file.type ||
+                        "application/octet-stream",
+                },
+                body: file,
+            }
+        );
+
+        if (!uploadResponse.ok) {
+            throw new Error(
+                `Upload failed with status ${uploadResponse.status}.`
+            );
+        }
+
+        return {
+            url: presignData.publicUrl as string,
+            path: presignData.path as string,
+        };
+    }
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
 
@@ -153,31 +203,13 @@ export default function NewProjectPage() {
                     const previewPath =
                         `previews/${timestamp}-${safePreviewName}`;
 
-                    const { error: previewError } =
-                        await supabase.storage
-                            .from("aruu")
-                            .upload(
-                                previewPath,
-                                previewVideoFile,
-                                {
-                                    cacheControl: "3600",
-                                    upsert: false,
-                                }
-                            );
+                    const uploaded = await uploadToR2(
+                        previewVideoFile,
+                        previewPath
+                    );
 
-                    if (previewError) {
-                        throw new Error(
-                            `Preview video upload failed: ${previewError.message}`
-                        );
-                    }
-
-                    const { data: previewData } =
-                        supabase.storage
-                            .from("aruu")
-                            .getPublicUrl(previewPath);
-
-                    previewUrl = previewData.publicUrl;
-                    storagePaths.push(previewPath);
+                    previewUrl = uploaded.url;
+                    storagePaths.push(uploaded.path);
                 }
             }
 
@@ -201,27 +233,13 @@ export default function NewProjectPage() {
                     const imagePath =
                         `designs/${timestamp}-${index + 1}-${safeImageName}`;
 
-                    const { error: imageError } =
-                        await supabase.storage
-                            .from("aruu")
-                            .upload(imagePath, image, {
-                                cacheControl: "3600",
-                                upsert: false,
-                            });
+                    const uploaded = await uploadToR2(
+                        image,
+                        imagePath
+                    );
 
-                    if (imageError) {
-                        throw new Error(
-                            `Image ${index + 1} upload failed: ${imageError.message}`
-                        );
-                    }
-
-                    const { data: imageData } =
-                        supabase.storage
-                            .from("aruu")
-                            .getPublicUrl(imagePath);
-
-                    imageUrls.push(imageData.publicUrl);
-                    storagePaths.push(imagePath);
+                    imageUrls.push(uploaded.url);
+                    storagePaths.push(uploaded.path);
                 }
 
                 // First image acts as the project thumbnail
@@ -467,7 +485,6 @@ export default function NewProjectPage() {
                                 </option>
                             </select>
                         </div>
-
                     </div>
 
                     <div className="mt-5">
