@@ -1674,18 +1674,17 @@ export default function VideoEditsPage() {
    */
 
   const gridAnimation =
-    animationPhase ===
-      "opening" ||
+    animationPhase === "opening" ||
       animationPhase === "open"
       ? {
         scale: 1.04,
         x: 200,
-        filter: "blur(12px)",
+        filter: "blur(12px) saturate(0)",
       }
       : {
         scale: 1,
         x: 0,
-        filter: "blur(0px)",
+        filter: "blur(0px) saturate(1)",
       };
 
   const chromeDuration =
@@ -2395,6 +2394,7 @@ export default function VideoEditsPage() {
                               "numeric",
                           }
                         )
+                          .toUpperCase()
                         : "—"}
                     </div>
                   </div>

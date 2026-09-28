@@ -888,6 +888,66 @@ export default function DesignPage() {
   }, [projects]);
 
   /*
+ * ============================================================
+ * AUTOMATIC GRID IMAGE SLIDESHOW
+ * ============================================================
+ *
+ * Every multi-image project has its own independent
+ * 2-second slideshow. Each project starts at a different
+ * point in the cycle so the grid never feels synchronized.
+ */
+  useEffect(() => {
+    if (projects.length === 0 || selectedProject) return;
+
+    const timers: number[] = [];
+
+    projects.forEach((project) => {
+      const images = getProjectImages(project);
+
+      if (images.length <= 1) return;
+
+      // Different starting point for every project.
+      const startDelay =
+        Math.random() * 2000;
+
+      const timeout = window.setTimeout(() => {
+        const interval = window.setInterval(() => {
+          setGridImageDirections((current) => ({
+            ...current,
+            [project.id]: 1,
+          }));
+
+          setGridImageIndices((current) => {
+            const currentIndex =
+              current[project.id] ?? 0;
+
+            const nextIndex =
+              currentIndex === images.length - 1
+                ? 0
+                : currentIndex + 1;
+
+            return {
+              ...current,
+              [project.id]: nextIndex,
+            };
+          });
+        }, 4000);
+
+        timers.push(interval);
+      }, startDelay);
+
+      timers.push(timeout);
+    });
+
+    return () => {
+      timers.forEach((timer) => {
+        window.clearTimeout(timer);
+        window.clearInterval(timer);
+      });
+    };
+  }, [projects, selectedProject]);
+
+  /*
    * Automatically open project if ?project=<id> is in URL on initial load
    */
   useEffect(() => {
@@ -1628,12 +1688,12 @@ export default function DesignPage() {
       ? {
         scale: 1.04,
         x: 200,
-        filter: "blur(12px)",
+        filter: "blur(12px) saturate(0)",
       }
       : {
         scale: 1,
         x: 0,
-        filter: "blur(0px)",
+        filter: "blur(0px) saturate(1)",
       };
 
   /*
@@ -1784,7 +1844,7 @@ export default function DesignPage() {
                               x: `${gridImageDirection * -100}%`,
                             }}
                             transition={{
-                              duration: 0.32,
+                              duration: 0.90,
                               ease: EASE,
                             }}
                             ref={(el) => {
@@ -2388,6 +2448,7 @@ export default function DesignPage() {
                               "numeric",
                           }
                         )
+                          .toUpperCase()
                         : "—"}
                     </div>
                   </div>
