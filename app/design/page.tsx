@@ -2328,68 +2328,63 @@ export default function DesignPage() {
                   </div>
 
                   {/* =================================================
-                      NAME
-                  ================================================= */}
+    NAME
+================================================= */}
 
-                  <div className="border-b border-black px-6 py-6 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  <div className="border-b border-black px-[24px] py-[24px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       NAME
                     </div>
 
-                    <div className="mt-3 max-w-full font-['Degular'] font-semibold text-[clamp(27px,4vw,56px)] leading-[0.85] tracking-[-0.05em] max-md:text-[38px]">
-                      {
-                        selectedProject.name
-                      }
+                    <div className="relative left-[-2px] mt-[-8px] m-0 max-w-full p-0 font-['Degular'] font-semibold text-[48px] leading-[42px] tracking-[-2.4px] max-md:text-[38px] max-md:leading-[33px] max-md:tracking-[-1.9px]">
+                      {selectedProject.name}
                     </div>
                   </div>
 
-                  {/* =================================================
-                      SKILL
-                  ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  {/* =================================================
+    SKILL
+================================================= */}
+
+                  <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       SKILL
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
-                      {
-                        selectedProject.skill ||
-                        "—"
-                      }
+                    <div className="relative left-[-2px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[28px] leading-[25px] tracking-[-1.4px] max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
+                      {selectedProject.skill || "—"}
                     </div>
                   </div>
 
-                  {/* =================================================
-                      KIND
-                  ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  {/* =================================================
+    KIND
+================================================= */}
+
+                  <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       KIND
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
-                      {
-                        selectedProject.kind ||
-                        "—"
-                      }
+                    <div className="relative left-[-2px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[28px] leading-[25px] tracking-[-1.4px] max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
+                      {selectedProject.kind || "—"}
                     </div>
                   </div>
 
-                  {/* =================================================
-                      SOFTWARE(S) USED
-                  ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  {/* =================================================
+    SOFTWARE(S) USED
+================================================= */}
+
+                  <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       SOFTWARE(S) USED
                     </div>
 
-                    <div className="mt-2 font-['Degular'] text-[clamp(20px,2.2vw,30px)] font-semibold leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
+                    <div className="relative left-[-2px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[28px] leading-[25px] tracking-[-1.4px] max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
                       {selectedProject.softwares
                         ? selectedProject.softwares.split(",").map((software, index) => (
-                          <span key={index} className="block">
+                          <span key={index} className="block m-0 p-0">
                             {software.trim()}
                           </span>
                         ))
@@ -2397,23 +2392,24 @@ export default function DesignPage() {
                     </div>
                   </div>
 
-                  {/* =================================================
-                      FOR WHOM
-                  ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  {/* =================================================
+    FOR WHOM
+================================================= */}
+
+                  <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       FOR WHOM
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
+                    <div className="relative left-[-2px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[28px] leading-[25px] tracking-[-1.4px] max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
                       {selectedProject.client ? (
                         selectedProject.client_url ? (
                           <a
                             href={selectedProject.client_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:underline hover:opacity-75 transition-opacity duration-200"
+                            className="m-0 p-0 transition-opacity duration-200 hover:underline hover:opacity-75"
                           >
                             {selectedProject.client}
                           </a>
@@ -2426,43 +2422,37 @@ export default function DesignPage() {
                     </div>
                   </div>
 
-                  {/* =================================================
-                      WHEN
-                  ================================================= */}
 
-                  <div className="border-b border-black px-6 py-5 max-md:px-4 max-md:py-4">
-                    <div className="font-['Degular'] font-semibold text-[12px] leading-none tracking-[-0.05em]">
+                  {/* =================================================
+    WHEN
+================================================= */}
+
+                  <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
+                    <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px]">
                       WHEN
                     </div>
 
-                    <div className="mt-2 font-['Degular'] font-semibold text-[clamp(20px,2.2vw,30px)] leading-[0.9] tracking-[-0.05em] max-md:text-[24px]">
+                    <div className="relative left-[-2px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[28px] leading-[25px] tracking-[-1.4px] max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
                       {selectedProject.project_date
-                        ? new Date(
-                          selectedProject.project_date
-                        ).toLocaleDateString(
-                          "en-US",
-                          {
-                            month:
-                              "long",
-                            year:
-                              "numeric",
-                          }
-                        )
+                        ? new Date(selectedProject.project_date)
+                          .toLocaleDateString("en-US", {
+                            month: "long",
+                            year: "numeric",
+                          })
                           .toUpperCase()
                         : "—"}
                     </div>
                   </div>
 
-                  {/* =================================================
-                      DESCRIPTION
-                  ================================================= */}
 
-                  <div className="px-6 pt-5 max-md:px-4 max-md:pt-4">
+                  {/* =================================================
+    DESCRIPTION
+================================================= */}
+
+                  <div className="px-[24px] pt-[20px] max-md:px-[16px] max-md:pt-[16px]">
                     {selectedProject.description && (
-                      <p className="max-w-full font-['Degular'] font-semibold text-[clamp(13px,1.15vw,16px)] leading-[1.4] tracking-[-0.05em] max-md:text-[15px]">
-                        {
-                          selectedProject.description
-                        }
+                      <p className="m-0 max-w-full p-0 font-['Degular'] font-semibold text-[15px] leading-[21px] tracking-[-0.75px]">
+                        {selectedProject.description}
                       </p>
                     )}
                   </div>
