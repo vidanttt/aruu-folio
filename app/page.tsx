@@ -14,17 +14,20 @@ export default function Home() {
           href="/video-edits"
           className="group relative flex flex-1 items-center justify-center overflow-hidden"
         >
-          <img
-            src="/video%20edits%20bg.png"
-            alt=""
-            className="absolute inset-0 h-full w-full scale-[1.006] object-cover saturate-[0.5] contrast-[1.25] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:saturate-100 group-hover:contrast-[1.25]"
-          />
+          {/* Background crop wrapper */}
+          <div className="absolute inset-[-8%] overflow-hidden">
+            <img
+              src="/video%20edits%20bg.png"
+              alt=""
+              className="absolute inset-0 h-full w-full scale-[1.006] object-cover saturate-[0.5] contrast-[1.25] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:saturate-100 group-hover:contrast-[1.25]"
+            />
+          </div>
 
           <div className="relative z-10 flex items-center justify-center transition-transform duration-700 ease-out group-hover:scale-[0.96]">
             <img
               src="/video%20edits(1).svg"
               alt="Video Edits"
-              className="h-[97px] w-auto object-contain"
+              className="h-[105px] w-auto object-contain"
             />
           </div>
         </Link>

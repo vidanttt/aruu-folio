@@ -9,12 +9,11 @@ export default function Footer({
 }) {
   return (
     <footer
-      className={`relative z-50 flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between ${
-        borderTop ? "border-t border-foreground" : ""
-      } bg-background px-7 max-md:px-3 font-['Degular'] text-[21px] font-semibold leading-none tracking-[-0.05em] text-black ${className}`}
+      className={`relative z-50 flex h-[clamp(2.25rem,5.5vh,3.25rem)] shrink-0 items-center justify-between ${borderTop ? "border-t border-foreground" : ""
+        } bg-background px-7 max-md:px-3 font-['Degular'] text-[21px] font-semibold leading-none tracking-[-0.05em] text-black ${className}`}
     >
       <a
-        href="https://mail.google.com/mail/?view=cm&fs=1&to=wrk@aruu.fr"
+        href="mailto:wrk@aruu.fr"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-block transition-transform duration-200 ease-out hover:scale-[1.02]"

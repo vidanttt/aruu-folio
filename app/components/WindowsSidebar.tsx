@@ -47,6 +47,8 @@ export default function WindowsSidebar({
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const SIDEBAR_WIDTH = 420;
+
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
@@ -57,7 +59,7 @@ export default function WindowsSidebar({
 
   return (
     <motion.aside
-      className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[20vw] min-w-[200px] max-w-[380px] max-md:w-[50vw] max-md:min-w-0 max-md:max-w-none overflow-hidden border-r border-black bg-white"
+      className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] min-w-0 max-w-none max-md:w-[50vw] max-md:min-w-0 max-md:max-w-none overflow-hidden border-r border-black bg-white"
       initial={{
         x: "-100%",
       }}
@@ -69,6 +71,7 @@ export default function WindowsSidebar({
         ease: EASE,
       }}
       style={{
+        width: `${SIDEBAR_WIDTH}px`,
         pointerEvents: animationPhase === "closing" ? "none" : "auto",
       }}
       onMouseDown={(event) => {
@@ -298,11 +301,11 @@ export default function WindowsSidebar({
         ================================================= */}
 
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
-          <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
+          <div className="font-['Degular'] font-regular text-[12px] leading-[15px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             SOFTWARE(S) USED
           </div>
 
-          <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[21px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
+          <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[18px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.softwares
               ? selectedProject.softwares.split(",").map((software, index) => (
                 <span key={index} className="block m-0 p-0">

@@ -33,6 +33,23 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://use.typekit.net/fuu4myv.css"
         />
+        <link
+          rel="preload"
+          href="/wordmark.svg"
+          as="image"
+          type="image/svg+xml"
+        />
+        <link
+          rel="preload"
+          href="/aruufar.svg"
+          as="image"
+          type="image/svg+xml"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "document.addEventListener('contextmenu',function(e){e.preventDefault();},true);",
+          }}
+        />
       </head>
 
       <body className="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-background text-foreground">

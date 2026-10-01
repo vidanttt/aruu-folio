@@ -16,7 +16,16 @@ const pageLogos: Record<string, { src: string; alt: string }> = {
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  const pageLogo = pageLogos[pathname];
+
+  const isDesign = pathname === "/design" || pathname?.startsWith("/design/");
+  const isVideoEdits = pathname === "/video-edits" || pathname?.startsWith("/video-edits/");
+  const isInnerPage = isDesign || isVideoEdits;
+
+  const pageLogo = isDesign
+    ? pageLogos["/design"]
+    : isVideoEdits
+      ? pageLogos["/video-edits"]
+      : undefined;
   const hasPageLogo = Boolean(pageLogo);
 
   return (
@@ -29,19 +38,30 @@ export default function SiteHeader() {
             : undefined
         }
       >
-        <img
-          src="/wordmark.svg"
-          alt="ARUU for REAL"
-          className="h-[34px] w-auto object-contain transition-opacity hover:opacity-80"
-          style={{ filter: "brightness(0)" }}
-        />
+        {isInnerPage ? (
+          <img
+            key="aruufar"
+            src="/aruufar.svg"
+            alt="ARUU for REAL"
+            className="h-[32px] w-auto translate-y-[3px] object-contain transition-opacity hover:opacity-80"
+            style={{ filter: "brightness(0)" }}
+          />
+        ) : (
+          <img
+            key="wordmark"
+            src="/wordmark.svg"
+            alt="ARUU for REAL"
+            className="h-[32px] w-auto translate-y-[3px] object-contain transition-opacity hover:opacity-80"
+            style={{ filter: "brightness(0)" }}
+          />
+        )}
       </Link>
 
       {pageLogo ? (
         <img
           src={pageLogo.src}
           alt={pageLogo.alt}
-          className="absolute right-4 h-[50px] w-auto object-contain sm:right-6"
+          className="absolute right-4 h-[50px] w-auto translate-y-[3px] object-contain sm:right-6"
           style={{ filter: "brightness(0)" }}
         />
       ) : null}
