@@ -815,18 +815,7 @@ export default function DesignPage() {
         setMobileGridWidth(window.innerWidth);
         return;
       }
-      const sidebarOpen =
-        selectedProject !== null &&
-        animationPhase !== "closed";
-      const sidebarWidth = getSidebarWidth(window.innerWidth);
-      const availableWidth = sidebarOpen
-        ? Math.max(1, window.innerWidth - sidebarWidth)
-        : window.innerWidth;
-      setDesktopGridWidth(
-        sidebarOpen
-          ? availableWidth
-          : Math.min(availableWidth, 1920)
-      );
+      setDesktopGridWidth(Math.min(window.innerWidth, 1920));
       setMobileGridWidth(0);
     }
     syncGridWidths();
@@ -834,7 +823,7 @@ export default function DesignPage() {
     return () => {
       window.removeEventListener("resize", syncGridWidths);
     };
-  }, [selectedProject, animationPhase]);
+  }, []);
   useEffect(() => {
     if (initialDeepLinkHandled.current || projects.length === 0) return;
     initialDeepLinkHandled.current = true;
@@ -1489,21 +1478,12 @@ export default function DesignPage() {
             0
           );
           return (
-            <div className="hidden w-full md:block">
+            <div className="mx-auto hidden w-full max-w-[1920px] md:block">
               <div
-                className="relative box-border"
+                className="relative box-border w-full"
                 style={{
-                  width: desktopGridWidth,
-                  maxWidth: "none",
-                  marginLeft:
-                    selectedProject && animationPhase !== "closed"
-                      ? "clamp(200px, 20vw, 380px)"
-                      : "auto",
-                  marginRight:
-                    selectedProject && animationPhase !== "closed"
-                      ? "0px"
-                      : "auto",
                   height: gridHeight,
+                  backgroundColor: "white",
                 }}
               >
                 {orderedProjects.map((project) => {

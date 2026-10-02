@@ -2053,7 +2053,7 @@ export default function VideoEditsPage() {
                 navigateProject={navigateProject}
                 projectsLength={projects.length}
                 category="video-edits"
-                
+
               />
 
               {/* ==================================================
