@@ -1,5 +1,4 @@
 "use client";
-
 import {
   AnimatePresence,
   motion,
@@ -14,12 +13,10 @@ import {
   type MouseEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-
 import Footer from "../components/Footer";
 import MobileFooter from "../components/MobileFooter";
 import WindowsSidebar from "../components/WindowsSidebar";
 import { createClient } from "@/lib/supabase/client";
-
 type Project = {
   id: number;
   name: string;
@@ -36,7 +33,6 @@ type Project = {
   description: string | null;
   published: boolean;
 };
-
 type Rect = {
   left: number;
   top: number;
@@ -50,15 +46,12 @@ type ImageDimensionMap = Record<
     height: number;
   }
 >;
-
 type AnimationPhase =
   | "closed"
   | "opening"
   | "open"
   | "closing";
-
 const supabase = createClient();
-
 /*
  * Opening grows the artwork, so it can take
  * its time. Closing is now a bit snappier —
@@ -68,9 +61,7 @@ const supabase = createClient();
  */
 const OPEN_DURATION = 0.375;
 const CLOSE_DURATION = 0.25;
-
 const EASE = [0.22, 1, 0.36, 1] as const;
-
 /*
  * Plain ease-out cubic — used by the manual
  * per-frame close animation below, which
@@ -80,7 +71,6 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3);
 }
-
 /*
  * Site header height. Keep this in sync with
  * the shared SiteHeader clamp so the viewer
@@ -91,13 +81,18 @@ function getHeaderHeight() {
   if (typeof window === "undefined") {
     return 72;
   }
-
   return Math.min(
     Math.max(64, window.innerHeight * 0.1),
     89.6
   );
 }
 
+function getSidebarWidth(viewportWidth: number) {
+  if (viewportWidth < 768) {
+    return viewportWidth * 0.5;
+  }
+  return Math.min(Math.max(viewportWidth * 0.2, 200), 380);
+}
 /*
  * ============================================================
  * DESIGN GRID
@@ -110,7 +105,6 @@ function getHeaderHeight() {
  *
  * Vertical sizes can vary independently.
  */
-
 /*
  * ============================================================
  * NATURAL IMAGE -> GRID UNITS
@@ -126,29 +120,24 @@ function getHeaderHeight() {
  * We only use the uploaded image dimensions to choose the
  * closest shape based on the actual image dimensions.
  */
-
 // const GRID_COLUMNS = 5;
-
 function getTileSpan(ratio: number) {
   // Keep the editorial rule: a landscape tile gets two
   // horizontal units, while square/portrait artwork gets one.
   return ratio > 1 ? 2 : 1;
 }
-
 function getImageRatio(
   dimensions: { width: number; height: number } | undefined
 ) {
   if (!dimensions?.width || !dimensions?.height) return 1;
   return dimensions.width / dimensions.height;
 }
-
 type ImageTilePlacement = {
   left: number;
   top: number;
   width: number;
   height: number;
 };
-
 function buildImageMasonry(
   projects: Project[],
   dimensions: ImageDimensionMap,
@@ -156,7 +145,6 @@ function buildImageMasonry(
 ): Record<number, ImageTilePlacement> {
   const placements: Record<number, ImageTilePlacement> = {};
   if (!containerWidth || projects.length === 0) return placements;
-
   /*
    * The layout is order-driven.
    *
@@ -175,27 +163,22 @@ function buildImageMasonry(
     { length: GRID_COLUMNS },
     () => 0
   );
-
   for (const project of projects) {
     const ratio = Math.max(
       0.01,
       getImageRatio(dimensions[project.id])
     );
-
     const columnSpan = Math.min(
       GRID_COLUMNS,
       getTileSpan(ratio)
     );
-
     // Landscape = exactly 2 horizontal grid units.
     // Height remains proportional so the complete image stays visible.
     const width = columnWidth * columnSpan;
     const height = width / ratio;
-
     let bestStart = 0;
     let bestTop = Number.POSITIVE_INFINITY;
     let bestBalance = Number.POSITIVE_INFINITY;
-
     for (
       let startColumn = 0;
       startColumn <= GRID_COLUMNS - columnSpan;
@@ -207,10 +190,8 @@ function buildImageMasonry(
           startColumn + columnSpan
         )
       );
-
       const nextSkyline = [...skyline];
       const bottom = top + height;
-
       for (
         let column = startColumn;
         column < startColumn + columnSpan;
@@ -218,11 +199,9 @@ function buildImageMasonry(
       ) {
         nextSkyline[column] = bottom;
       }
-
       const balance =
         Math.max(...nextSkyline) -
         Math.min(...nextSkyline);
-
       if (
         top < bestTop ||
         (top === bestTop &&
@@ -236,16 +215,13 @@ function buildImageMasonry(
         bestBalance = balance;
       }
     }
-
     placements[project.id] = {
       left: bestStart * columnWidth,
       top: bestTop,
       width,
       height,
     };
-
     const bottom = bestTop + height;
-
     for (
       let column = bestStart;
       column < bestStart + columnSpan;
@@ -254,29 +230,23 @@ function buildImageMasonry(
       skyline[column] = bottom;
     }
   }
-
   return placements;
 }
-
 type MobileImageTilePlacement = {
   left: number;
   top: number;
   width: number;
   height: number;
 };
-
 function buildMobileImageMasonry(
   projects: Project[],
   dimensions: ImageDimensionMap,
   containerWidth: number
 ): Record<number, MobileImageTilePlacement> {
   const placements: Record<number, MobileImageTilePlacement> = {};
-
   if (!containerWidth) return placements;
-
   const columnWidth = containerWidth / 2;
   let cursorY = 0;
-
   // Mobile is intentionally a different packing system from desktop.
   // Tall portraits are paired two-up. Everything else gets a full-width
   // row. This keeps the gallery visually tight instead of producing
@@ -288,7 +258,6 @@ function buildMobileImageMasonry(
       0.01,
       getImageRatio(dimensions[project.id])
     );
-
     // Only clearly tall portrait artwork is a half-width tile.
     // Square / landscape artwork gets a full-width row.
     const isPortrait = ratio < 0.82;
@@ -300,51 +269,42 @@ function buildMobileImageMasonry(
       )
       : 1;
     const nextIsPortrait = Boolean(nextProject) && nextRatio < 0.82;
-
     if (isPortrait && nextIsPortrait) {
       const firstWidth = columnWidth;
       const secondWidth = columnWidth;
       const firstHeight = firstWidth / ratio;
       const secondHeight = secondWidth / nextRatio;
       const rowHeight = Math.max(firstHeight, secondHeight);
-
       placements[project.id] = {
         left: 0,
         top: cursorY,
         width: firstWidth,
         height: firstHeight,
       };
-
       placements[nextProject.id] = {
         left: columnWidth,
         top: cursorY,
         width: secondWidth,
         height: secondHeight,
       };
-
       cursorY += rowHeight;
       index += 1;
       continue;
     }
-
     // A lone portrait is promoted to a full-width tile instead of
     // leaving an empty half-row beside it.
     const width = containerWidth;
     const height = width / ratio;
-
     placements[project.id] = {
       left: 0,
       top: cursorY,
       width,
       height,
     };
-
     cursorY += height;
   }
-
   return placements;
 }
-
 function getProjectImages(project: Project) {
   if (
     project.image_urls &&
@@ -353,14 +313,11 @@ function getProjectImages(project: Project) {
   ) {
     return project.image_urls;
   }
-
   if (project.thumbnail_url) {
     return [project.thumbnail_url];
   }
-
   return [];
 }
-
 function fitImageIntoArea(
   naturalWidth: number,
   naturalHeight: number,
@@ -374,16 +331,12 @@ function fitImageIntoArea(
       height: area.height,
     };
   }
-
   const imageRatio =
     naturalWidth / naturalHeight;
-
   const areaRatio =
     area.width / area.height;
-
   let width: number;
   let height: number;
-
   if (imageRatio > areaRatio) {
     width = area.width;
     height = width / imageRatio;
@@ -391,63 +344,46 @@ function fitImageIntoArea(
     height = area.height;
     width = height * imageRatio;
   }
-
   return {
     left:
       area.left +
       (area.width - width) / 2,
-
     top:
       area.top +
       (area.height - height) / 2,
-
     width,
     height,
   };
 }
-
 export default function DesignPage() {
   const router = useRouter();
   const [projects, setProjects] =
     useState<Project[]>([]);
-
   const [loading, setLoading] =
     useState(true);
-
   const [imageDimensions, setImageDimensions] =
     useState<ImageDimensionMap>({});
-
   const [desktopGridWidth, setDesktopGridWidth] =
     useState(0);
-
   const [mobileGridWidth, setMobileGridWidth] =
     useState(0);
-
   const [selectedProject, setSelectedProject] =
     useState<Project | null>(null);
-
   const [selectedImageIndex, setSelectedImageIndex] =
     useState(0);
-
   // Remembers the image currently shown in each project tile.
   const [gridImageIndices, setGridImageIndices] =
     useState<Record<number, number>>({});
-
   const [gridImageDirections, setGridImageDirections] =
     useState<Record<number, 1 | -1>>({});
-
   const [imageDirection, setImageDirection] =
     useState<1 | -1>(1);
-
   const [copied, setCopied] =
     useState(false);
-
   const copyTimeoutRef =
     useRef<NodeJS.Timeout | null>(null);
-
   const initialDeepLinkHandled =
     useRef(false);
-
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
@@ -455,20 +391,16 @@ export default function DesignPage() {
       }
     };
   }, []);
-
   // A second click during a close is queued so only one artwork
   // ever exists in the flying layer. This prevents ghost frames.
   const pendingOpenRef = useRef<{
     project: Project;
     initialImageIndex: number;
   } | null>(null);
-
   const [animationPhase, setAnimationPhase] =
     useState<AnimationPhase>("closed");
-
   const [originRect, setOriginRect] =
     useState<Rect | null>(null);
-
   /*
    * ============================================================
    * LIVE TILE POSITION REFS
@@ -481,17 +413,14 @@ export default function DesignPage() {
    * back to where the tile actually is now —
    * even if the layout shifted while open.
    */
-
   const desktopTileRefs =
     useRef<Record<number, HTMLImageElement | null>>(
       {}
     );
-
   const mobileTileRefs =
     useRef<Record<number, HTMLImageElement | null>>(
       {}
     );
-
   function getLiveTileRect(
     projectId: number
   ): Rect | null {
@@ -500,7 +429,6 @@ export default function DesignPage() {
       window.matchMedia(
         "(min-width: 768px)"
       ).matches;
-
     const el = isDesktop
       ? desktopTileRefs.current[
       projectId
@@ -508,19 +436,15 @@ export default function DesignPage() {
       : mobileTileRefs.current[
       projectId
       ];
-
     if (!el) return null;
-
     const rect =
       el.getBoundingClientRect();
-
     if (
       rect.width === 0 &&
       rect.height === 0
     ) {
       return null;
     }
-
     return {
       left: rect.left,
       top: rect.top,
@@ -528,7 +452,6 @@ export default function DesignPage() {
       height: rect.height,
     };
   }
-
   /*
    * ============================================================
    * ARTWORK RECT — MOTION VALUES
@@ -541,13 +464,11 @@ export default function DesignPage() {
    * click smoothly interrupt an in-flight animation
    * instead of snapping.
    */
-
   const artLeft = useMotionValue(0);
   const artTop = useMotionValue(0);
   const artWidth = useMotionValue(0);
   const artHeight = useMotionValue(0);
   const artScale = useMotionValue(1);
-
   function getArtworkRect(): Rect {
     return {
       left: artLeft.get(),
@@ -556,7 +477,6 @@ export default function DesignPage() {
       height: artHeight.get(),
     };
   }
-
   function setArtworkRectInstant(
     rect: Rect
   ) {
@@ -565,7 +485,6 @@ export default function DesignPage() {
     artWidth.set(rect.width);
     artHeight.set(rect.height);
   }
-
   function stopArtworkAnimation() {
     artLeft.stop();
     artTop.stop();
@@ -573,7 +492,6 @@ export default function DesignPage() {
     artHeight.stop();
     artScale.stop();
   }
-
   function animateArtworkRectTo(
     rect: Rect,
     duration: number
@@ -581,30 +499,25 @@ export default function DesignPage() {
     // Kill any previous active-artwork tween first so a new
     // transition always starts from its exact current position.
     stopArtworkAnimation();
-
     animateMotionValue(artLeft, rect.left, {
       duration,
       ease: EASE,
     });
-
     animateMotionValue(artTop, rect.top, {
       duration,
       ease: EASE,
     });
-
     animateMotionValue(
       artWidth,
       rect.width,
       { duration, ease: EASE }
     );
-
     animateMotionValue(
       artHeight,
       rect.height,
       { duration, ease: EASE }
     );
   }
-
   /*
    * ============================================================
    * CLOSE ANIMATION LOOP
@@ -619,37 +532,30 @@ export default function DesignPage() {
    * artwork visibly follows the scroll on the way
    * down, and always lands exactly on the tile.
    */
-
   const closeFrameRef =
     useRef<number | null>(null);
-
   const animationPhaseRef =
     useRef<AnimationPhase>(
       animationPhase
     );
-
   useEffect(() => {
     animationPhaseRef.current =
       animationPhase;
   }, [animationPhase]);
-
   useEffect(() => {
     return () => {
       stopCloseAnimation();
       stopArtworkAnimation();
     };
   }, []);
-
   function stopCloseAnimation() {
     if (closeFrameRef.current !== null) {
       cancelAnimationFrame(
         closeFrameRef.current
       );
-
       closeFrameRef.current = null;
     }
   }
-
   function getLiveCloseTarget(
     projectId: number,
     fallback: Rect
@@ -658,7 +564,6 @@ export default function DesignPage() {
     // always chase the real tile rectangle, with no header clamp.
     return getLiveTileRect(projectId) || fallback;
   }
-
   function runCloseAnimation(
     projectId: number,
     startRect: Rect,
@@ -666,36 +571,29 @@ export default function DesignPage() {
     onDone: () => void
   ) {
     stopCloseAnimation();
-
     const startTime =
       performance.now();
-
     // Match the Video Edits close animation: capture the exact
     // live tile rectangle at the moment closing starts.
     const initialTarget = getLiveCloseTarget(
       projectId,
       startRect
     );
-
     function frame(now: number) {
       const elapsed =
         now - startTime;
-
       const t = Math.min(
         1,
         elapsed / durationMs
       );
-
       const eased =
         easeOutCubic(t);
-
       // Re-measure every frame so the artwork follows the exact
       // live tile position while the page is moving, just like Video Edits.
       const liveTarget = getLiveCloseTarget(
         projectId,
         initialTarget
       );
-
       /*
        * Animate toward the original target, then add the exact
        * movement of that target caused by scrolling. This is the
@@ -710,7 +608,6 @@ export default function DesignPage() {
           eased +
           (liveTarget.left -
             initialTarget.left),
-
         top:
           startRect.top +
           (initialTarget.top -
@@ -718,7 +615,6 @@ export default function DesignPage() {
           eased +
           (liveTarget.top -
             initialTarget.top),
-
         width:
           startRect.width +
           (initialTarget.width -
@@ -726,7 +622,6 @@ export default function DesignPage() {
           eased +
           (liveTarget.width -
             initialTarget.width),
-
         height:
           startRect.height +
           (initialTarget.height -
@@ -735,7 +630,6 @@ export default function DesignPage() {
           (liveTarget.height -
             initialTarget.height),
       });
-
       if (t < 1) {
         closeFrameRef.current =
           requestAnimationFrame(
@@ -754,22 +648,17 @@ export default function DesignPage() {
         onDone();
       }
     }
-
     closeFrameRef.current =
       requestAnimationFrame(frame);
   }
-
-
   /*
    * ============================================================
    * LOAD PROJECTS
    * ============================================================
    */
-
   useEffect(() => {
     async function loadProjects() {
       setLoading(true);
-
       const { data, error } =
         await supabase
           .from("projects")
@@ -781,27 +670,21 @@ export default function DesignPage() {
           .order("position", {
             ascending: true,
           });
-
       if (error) {
         console.error(
           "Failed to load design projects:",
           error
         );
-
         setProjects([]);
         setLoading(false);
         return;
       }
-
       setProjects(
         (data as Project[]) || []
       );
-
       setLoading(false);
     }
-
     loadProjects();
-
     const channel = supabase
       .channel("design-project-publish-changes")
       .on(
@@ -821,16 +704,13 @@ export default function DesignPage() {
             );
             return;
           }
-
           const project = payload.new as Project;
-
           setProjects((current) => {
             if (!project.published) {
               return current.filter(
                 (item) => item.id !== project.id
               );
             }
-
             const next = current.some(
               (item) => item.id === project.id
             )
@@ -838,7 +718,6 @@ export default function DesignPage() {
                 item.id === project.id ? project : item
               )
               : [...current, project];
-
             return next.sort(
               (a, b) => a.position - b.position
             );
@@ -846,12 +725,10 @@ export default function DesignPage() {
         }
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
-
   /*
    * Read the real dimensions of each project's first artwork.
    * This is frontend-only for now — nothing is written back to
@@ -859,18 +736,13 @@ export default function DesignPage() {
    */
   useEffect(() => {
     if (projects.length === 0) return;
-
     let cancelled = false;
-
     projects.forEach((project) => {
       const imageUrl = getProjectImages(project)[0];
       if (!imageUrl) return;
-
       const image = new Image();
-
       image.onload = () => {
         if (cancelled) return;
-
         setImageDimensions((current) => ({
           ...current,
           [project.id]: {
@@ -879,15 +751,12 @@ export default function DesignPage() {
           },
         }));
       };
-
       image.src = imageUrl;
     });
-
     return () => {
       cancelled = true;
     };
   }, [projects]);
-
   /*
  * ============================================================
  * AUTOMATIC GRID IMAGE SLIDESHOW
@@ -899,47 +768,36 @@ export default function DesignPage() {
  */
   useEffect(() => {
     if (projects.length === 0 || selectedProject) return;
-
     const timers: number[] = [];
-
     projects.forEach((project) => {
       const images = getProjectImages(project);
-
       if (images.length <= 1) return;
-
       // Different starting point for every project.
       const startDelay =
         Math.random() * 2000;
-
       const timeout = window.setTimeout(() => {
         const interval = window.setInterval(() => {
           setGridImageDirections((current) => ({
             ...current,
             [project.id]: 1,
           }));
-
           setGridImageIndices((current) => {
             const currentIndex =
               current[project.id] ?? 0;
-
             const nextIndex =
               currentIndex === images.length - 1
                 ? 0
                 : currentIndex + 1;
-
             return {
               ...current,
               [project.id]: nextIndex,
             };
           });
         }, 4000);
-
         timers.push(interval);
       }, startDelay);
-
       timers.push(timeout);
     });
-
     return () => {
       timers.forEach((timer) => {
         window.clearTimeout(timer);
@@ -947,7 +805,6 @@ export default function DesignPage() {
       });
     };
   }, [projects, selectedProject]);
-
   /*
    * Automatically open project if ?project=<id> is in URL on initial load
    */
@@ -958,47 +815,41 @@ export default function DesignPage() {
         setMobileGridWidth(window.innerWidth);
         return;
       }
-
+      const sidebarOpen =
+        selectedProject !== null &&
+        animationPhase !== "closed";
+      const sidebarWidth = getSidebarWidth(window.innerWidth);
+      const availableWidth = sidebarOpen
+        ? Math.max(1, window.innerWidth - sidebarWidth)
+        : window.innerWidth;
       setDesktopGridWidth(
-        Math.min(window.innerWidth, 1920)
+        sidebarOpen
+          ? availableWidth
+          : Math.min(availableWidth, 1920)
       );
       setMobileGridWidth(0);
     }
-
     syncGridWidths();
-    window.addEventListener(
-      "resize",
-      syncGridWidths
-    );
-
+    window.addEventListener("resize", syncGridWidths);
     return () => {
-      window.removeEventListener(
-        "resize",
-        syncGridWidths
-      );
+      window.removeEventListener("resize", syncGridWidths);
     };
-  }, []);
-
+  }, [selectedProject, animationPhase]);
   useEffect(() => {
     if (initialDeepLinkHandled.current || projects.length === 0) return;
     initialDeepLinkHandled.current = true;
-
     if (typeof window === "undefined") return;
-
     const params = new URLSearchParams(window.location.search);
     const projectIdParam = params.get("project");
     if (!projectIdParam) return;
-
     const targetProject = projects.find(
       (p) => String(p.id) === projectIdParam
     );
     if (!targetProject) return;
-
     const imgParam = params.get("img");
     const targetImgIndex = imgParam
       ? Math.max(0, parseInt(imgParam, 10) - 1)
       : 0;
-
     if (
       window.matchMedia("(max-width: 767px)").matches
     ) {
@@ -1008,7 +859,6 @@ export default function DesignPage() {
       );
       return;
     }
-
     requestAnimationFrame(() => {
       const tileEl =
         desktopTileRefs.current[targetProject.id] ||
@@ -1016,7 +866,6 @@ export default function DesignPage() {
       openProject(targetProject, tileEl, targetImgIndex);
     });
   }, [projects]);
-
   /*
    * Handle browser back / forward buttons
    */
@@ -1024,7 +873,6 @@ export default function DesignPage() {
     function handlePopState() {
       const params = new URLSearchParams(window.location.search);
       const projectIdParam = params.get("project");
-
       if (!projectIdParam) {
         if (selectedProject && animationPhase !== "closing") {
           closeProject();
@@ -1045,61 +893,40 @@ export default function DesignPage() {
         }
       }
     }
-
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
   }, [projects, selectedProject, animationPhase]);
-
   /*
    * ============================================================
    * CALCULATE FINAL ARTWORK POSITION
    * ============================================================
    */
-
   function calculateTargetRect(
     naturalWidth: number,
     naturalHeight: number
   ) {
     const viewportWidth =
       window.innerWidth;
-
     const viewportHeight =
       window.innerHeight;
-
     const headerHeight = getHeaderHeight();
-
-    const panelWidth =
-      viewportWidth < 768
-        ? viewportWidth * 0.5
-        : Math.min(
-          Math.max(
-            viewportWidth * 0.20,
-            200
-          ),
-          380
-        );
-
+    const panelWidth = getSidebarWidth(viewportWidth);
     const contentLeft = panelWidth;
     const contentTop = headerHeight;
-
     const contentWidth =
       viewportWidth - contentLeft;
-
     const contentHeight =
       viewportHeight - contentTop;
-
     const paddingX =
       viewportWidth < 768
         ? 8
         : 48;
-
     const paddingY =
       viewportWidth < 768
         ? 12
         : 40;
-
     const area: Rect = {
       left: contentLeft + paddingX,
       top: contentTop + paddingY,
@@ -1112,20 +939,17 @@ export default function DesignPage() {
         contentHeight - paddingY * 2
       ),
     };
-
     return fitImageIntoArea(
       naturalWidth,
       naturalHeight,
       area
     );
   }
-
   /*
    * ============================================================
    * DEFAULT SOURCE RECT (FALLBACK)
    * ============================================================
    */
-
   function getDefaultSourceRect(): Rect {
     const vw =
       typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -1138,20 +962,17 @@ export default function DesignPage() {
       height: vh * 0.75,
     };
   }
-
   /*
    * ============================================================
    * OPEN PROJECT
    * ============================================================
    */
-
   function beginOpenProject(
     project: Project,
     imageElement?: HTMLImageElement | null,
     initialImageIndex: number = 0
   ) {
     let sourceRect: Rect;
-
     if (imageElement) {
       const rect = imageElement.getBoundingClientRect();
       sourceRect = rect.width > 0 && rect.height > 0
@@ -1163,14 +984,12 @@ export default function DesignPage() {
         ? liveRect
         : getDefaultSourceRect();
     }
-
     stopCloseAnimation();
     stopArtworkAnimation();
     artScale.set(1.035);
     setArtworkRectInstant(sourceRect);
     setOriginRect(sourceRect);
     setSelectedProject(project);
-
     const images = getProjectImages(project);
     const safeIndex = initialImageIndex >= 0 && initialImageIndex < images.length
       ? initialImageIndex
@@ -1181,10 +1000,8 @@ export default function DesignPage() {
       ...current,
       [project.id]: safeIndex,
     }));
-
     document.body.style.overflow = "hidden";
     setAnimationPhase("opening");
-
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("project", String(project.id));
@@ -1196,7 +1013,6 @@ export default function DesignPage() {
       window.history.replaceState(null, "", url.pathname + url.search);
     }
   }
-
   function openProject(
     project: Project,
     imageElement?: HTMLImageElement | null,
@@ -1212,17 +1028,14 @@ export default function DesignPage() {
           initialImageIndex < images.length
           ? initialImageIndex
           : 0;
-
       router.push(
         `/design/${project.id}${safeIndex > 0 ? `?img=${safeIndex + 1}` : ""
         }`
       );
       return;
     }
-
     const isTransitioning = animationPhaseRef.current !== "closed";
     const isDifferentProject = selectedProject && selectedProject.id !== project.id;
-
     // Never overlap two flying artworks. Finish the current one first,
     // then measure the newly requested tile and open from that exact rect.
     if (isTransitioning && isDifferentProject) {
@@ -1232,10 +1045,8 @@ export default function DesignPage() {
       }
       return;
     }
-
     beginOpenProject(project, imageElement, initialImageIndex);
   }
-
   /*
    * ============================================================
    * PROJECT NAVIGATION
@@ -1243,7 +1054,6 @@ export default function DesignPage() {
    * The image arrows remain the only controls for sub-images.
    * ============================================================
    */
-
   function navigateProject(direction: -1 | 1) {
     if (
       !selectedProject ||
@@ -1252,25 +1062,19 @@ export default function DesignPage() {
     ) {
       return;
     }
-
     const currentIndex = projects.findIndex(
       (project) => project.id === selectedProject.id
     );
-
     if (currentIndex < 0) return;
-
     const nextIndex =
       (currentIndex + direction + projects.length) % projects.length;
     const nextProject = projects[nextIndex];
-
     if (!nextProject) return;
-
     const nextImages = getProjectImages(nextProject);
     const nextImageIndex = Math.min(
       gridImageIndices[nextProject.id] ?? 0,
       Math.max(0, nextImages.length - 1)
     );
-
     stopArtworkAnimation();
     setCopied(false);
     setImageDirection(direction);
@@ -1281,7 +1085,6 @@ export default function DesignPage() {
       [nextProject.id]: nextImageIndex,
     }));
     setAnimationPhase("opening");
-
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("project", String(nextProject.id));
@@ -1293,13 +1096,11 @@ export default function DesignPage() {
       window.history.replaceState(null, "", url.pathname + url.search);
     }
   }
-
   /*
    * ============================================================
    * CLOSE PROJECT
    * ============================================================
    */
-
   function closeProject() {
     if (
       !selectedProject ||
@@ -1307,22 +1108,18 @@ export default function DesignPage() {
     ) {
       return;
     }
-
     setCopied(false);
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
-
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("project");
       url.searchParams.delete("img");
       window.history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
     }
-
     const projectId =
       selectedProject.id;
-
     /*
      * Stop the opening tween FIRST, then read the MotionValues.
      * That freezes the artwork exactly where it is at the instant
@@ -1330,21 +1127,16 @@ export default function DesignPage() {
      * first frame of the close animation.
      */
     stopArtworkAnimation();
-
     const startRect =
       getArtworkRect();
-
     artScale.set(1);
-
     setAnimationPhase("closing");
-
     /*
      * Unlock interaction immediately, so the
      * grid can scroll WHILE the artwork is
      * still animating back to it.
      */
     document.body.style.overflow = "";
-
     runCloseAnimation(
       projectId,
       startRect,
@@ -1352,12 +1144,10 @@ export default function DesignPage() {
       () => {
         const pendingOpen = pendingOpenRef.current;
         pendingOpenRef.current = null;
-
         setSelectedProject(null);
         setSelectedImageIndex(0);
         setOriginRect(null);
         setAnimationPhase("closed");
-
         if (pendingOpen) {
           requestAnimationFrame(() => {
             const tileEl =
@@ -1373,35 +1163,28 @@ export default function DesignPage() {
       }
     );
   }
-
   /*
    * ============================================================
    * IMAGE NAVIGATION
    * ============================================================
    */
-
   function showPreviousImage() {
     if (!selectedProject) return;
-
     const images =
       getProjectImages(
         selectedProject
       );
-
     if (images.length <= 1) return;
-
     const nextIndex =
       selectedImageIndex === 0
         ? images.length - 1
         : selectedImageIndex - 1;
-
     setImageDirection(-1);
     setSelectedImageIndex(nextIndex);
     setGridImageIndices((current) => ({
       ...current,
       [selectedProject.id]: nextIndex,
     }));
-
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       if (nextIndex > 0) {
@@ -1412,29 +1195,23 @@ export default function DesignPage() {
       window.history.replaceState(null, "", url.pathname + url.search);
     }
   }
-
   function showNextImage() {
     if (!selectedProject) return;
-
     const images =
       getProjectImages(
         selectedProject
       );
-
     if (images.length <= 1) return;
-
     const nextIndex =
       selectedImageIndex === images.length - 1
         ? 0
         : selectedImageIndex + 1;
-
     setImageDirection(1);
     setSelectedImageIndex(nextIndex);
     setGridImageIndices((current) => ({
       ...current,
       [selectedProject.id]: nextIndex,
     }));
-
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       if (nextIndex > 0) {
@@ -1445,13 +1222,11 @@ export default function DesignPage() {
       window.history.replaceState(null, "", url.pathname + url.search);
     }
   }
-
   /*
    * ============================================================
    * CALCULATE TARGET ARTWORK POSITION
    * ============================================================
    */
-
   useLayoutEffect(() => {
     if (
       !selectedProject ||
@@ -1459,36 +1234,26 @@ export default function DesignPage() {
     ) {
       return;
     }
-
     const project =
       selectedProject;
-
     const images =
       getProjectImages(project);
-
     const imageUrl =
       images[selectedImageIndex];
-
     if (!imageUrl) return;
-
     let cancelled = false;
-
     const image = new Image();
-
     image.onload = () => {
       if (cancelled) return;
-
       const nextRect =
         calculateTargetRect(
           image.naturalWidth,
           image.naturalHeight
         );
-
       animateArtworkRectTo(
         nextRect,
         OPEN_DURATION
       );
-
       animateMotionValue(
         artScale,
         1,
@@ -1497,7 +1262,6 @@ export default function DesignPage() {
           ease: EASE,
         }
       );
-
       setAnimationPhase(
         (current) =>
           current === "opening"
@@ -1505,9 +1269,7 @@ export default function DesignPage() {
             : current
       );
     };
-
     image.src = imageUrl;
-
     return () => {
       cancelled = true;
     };
@@ -1516,13 +1278,11 @@ export default function DesignPage() {
     selectedImageIndex,
     originRect,
   ]);
-
   /*
    * ============================================================
    * RECALCULATE ON RESIZE
    * ============================================================
    */
-
   useEffect(() => {
     if (
       !selectedProject ||
@@ -1530,16 +1290,13 @@ export default function DesignPage() {
     ) {
       return;
     }
-
     /*
      * Capture non-null values.
      */
     const project =
       selectedProject;
-
     const imageIndex =
       selectedImageIndex;
-
     function handleResize() {
       /*
        * Don't fight the close loop — it's
@@ -1551,38 +1308,29 @@ export default function DesignPage() {
       ) {
         return;
       }
-
       const images =
         getProjectImages(project);
-
       const imageUrl =
         images[imageIndex];
-
       if (!imageUrl) return;
-
       const image = new Image();
-
       image.onload = () => {
         const nextRect =
           calculateTargetRect(
             image.naturalWidth,
             image.naturalHeight
           );
-
         animateArtworkRectTo(
           nextRect,
           0.3
         );
       };
-
       image.src = imageUrl;
     }
-
     window.addEventListener(
       "resize",
       handleResize
     );
-
     return () => {
       window.removeEventListener(
         "resize",
@@ -1594,16 +1342,13 @@ export default function DesignPage() {
     selectedImageIndex,
     originRect,
   ]);
-
   /*
    * ============================================================
    * KEYBOARD CONTROLS
    * ============================================================
    */
-
   useEffect(() => {
     if (!selectedProject) return;
-
     function handleKeyDown(
       event: KeyboardEvent
     ) {
@@ -1611,7 +1356,6 @@ export default function DesignPage() {
         closeProject();
         return;
       }
-
       if (
         event.key === "ArrowLeft" ||
         event.code === "ArrowLeft"
@@ -1620,7 +1364,6 @@ export default function DesignPage() {
         navigateProject(-1);
         return;
       }
-
       if (
         event.key === "ArrowRight" ||
         event.code === "ArrowRight"
@@ -1629,12 +1372,10 @@ export default function DesignPage() {
         navigateProject(1);
       }
     }
-
     window.addEventListener(
       "keydown",
       handleKeyDown
     );
-
     return () => {
       window.removeEventListener(
         "keydown",
@@ -1646,25 +1387,21 @@ export default function DesignPage() {
     selectedImageIndex,
     animationPhase,
   ]);
-
   /*
    * ============================================================
    * VIEWER STATE
    * ============================================================
    */
-
   const selectedImages =
     selectedProject
       ? getProjectImages(
         selectedProject
       )
       : [];
-
   const isViewerMounted =
     selectedProject !== null &&
     originRect !== null &&
     animationPhase !== "closed";
-
   /*
    * ============================================================
    * BACKGROUND GRID ANIMATION
@@ -1682,7 +1419,6 @@ export default function DesignPage() {
    * CLOSED:
    * sharp
    */
-
   const gridAnimation =
     animationPhase === "opening" ||
       animationPhase === "open"
@@ -1696,7 +1432,6 @@ export default function DesignPage() {
         x: 0,
         filter: "blur(0px) saturate(1)",
       };
-
   /*
    * ============================================================
    * PHASE-BASED TRANSITION DURATION
@@ -1707,18 +1442,15 @@ export default function DesignPage() {
    * sidebar) that reacts to animationPhase uses
    * this instead of a single fixed duration.
    */
-
   const chromeDuration =
     animationPhase === "closing"
       ? CLOSE_DURATION
       : OPEN_DURATION;
-
   return (
     <main className="relative flex min-h-screen w-full flex-col bg-white text-black">
       {/* ========================================================
           DESIGN GRID
       ======================================================== */}
-
       <motion.div
         className="flex-1"
         animate={gridAnimation}
@@ -1735,18 +1467,15 @@ export default function DesignPage() {
         {/* ======================================================
             DESKTOP GRID
         ====================================================== */}
-
         {(() => {
           const orderedProjects = projects
             .slice()
             .sort((a, b) => a.position - b.position);
-
           const placements = buildImageMasonry(
             orderedProjects,
             imageDimensions,
             desktopGridWidth
           );
-
           const gridHeight = orderedProjects.reduce(
             (max, project) => {
               const placement = placements[project.id];
@@ -1759,13 +1488,21 @@ export default function DesignPage() {
             },
             0
           );
-
           return (
             <div className="hidden w-full md:block">
               <div
-                className="relative mx-auto box-border w-full"
+                className="relative box-border"
                 style={{
-                  maxWidth: "1920px",
+                  width: desktopGridWidth,
+                  maxWidth: "none",
+                  marginLeft:
+                    selectedProject && animationPhase !== "closed"
+                      ? "clamp(200px, 20vw, 380px)"
+                      : "auto",
+                  marginRight:
+                    selectedProject && animationPhase !== "closed"
+                      ? "0px"
+                      : "auto",
                   height: gridHeight,
                 }}
               >
@@ -1777,14 +1514,11 @@ export default function DesignPage() {
                   );
                   const image = images[gridImageIndex] || null;
                   const placement = placements[project.id];
-
                   if (!image || !placement) return null;
-
                   const isSelectedTile =
                     selectedProject?.id === project.id &&
                     animationPhase !== "closed";
                   const hasMultipleImages = images.length > 1;
-
                   const changeGridImage = (direction: -1 | 1) => {
                     if (!hasMultipleImages) return;
                     const currentIndex = gridImageIndices[project.id] ?? 0;
@@ -1800,10 +1534,8 @@ export default function DesignPage() {
                       [project.id]: nextIndex,
                     }));
                   };
-
                   const gridImageDirection =
                     gridImageDirections[project.id] ?? 1;
-
                   return (
                     <div
                       key={project.id}
@@ -1858,7 +1590,6 @@ export default function DesignPage() {
                           />
                         </AnimatePresence>
                       </button>
-
                       {hasMultipleImages && (
                         <>
                           <button
@@ -1896,22 +1627,18 @@ export default function DesignPage() {
             </div>
           );
         })()}
-
         {/* ======================================================
             MOBILE GRID
         ====================================================== */}
-
         {(() => {
           const orderedProjects = projects
             .slice()
             .sort((a, b) => a.position - b.position);
-
           const placements = buildMobileImageMasonry(
             orderedProjects,
             imageDimensions,
             mobileGridWidth
           );
-
           const gridHeight = orderedProjects.reduce(
             (max, project) => {
               const placement = placements[project.id];
@@ -1924,7 +1651,6 @@ export default function DesignPage() {
             },
             0
           );
-
           return (
             <div className="block w-full md:hidden">
               <div
@@ -1941,20 +1667,15 @@ export default function DesignPage() {
                   );
                   const image = images[gridImageIndex] || null;
                   const placement = placements[project.id];
-
                   if (!image || !placement) return null;
-
                   const isSelectedTile =
                     selectedProject?.id === project.id &&
                     animationPhase !== "closed";
                   const hasMultipleImages = images.length > 1;
-
                   const changeGridImage = (direction: -1 | 1) => {
                     if (!hasMultipleImages) return;
-
                     const currentIndex =
                       gridImageIndices[project.id] ?? 0;
-
                     const nextIndex =
                       direction === -1
                         ? currentIndex === 0
@@ -1963,7 +1684,6 @@ export default function DesignPage() {
                         : currentIndex === images.length - 1
                           ? 0
                           : currentIndex + 1;
-
                     setGridImageDirections((current) => ({
                       ...current,
                       [project.id]: direction,
@@ -1973,10 +1693,8 @@ export default function DesignPage() {
                       [project.id]: nextIndex,
                     }));
                   };
-
                   const gridImageDirection =
                     gridImageDirections[project.id] ?? 1;
-
                   return (
                     <div
                       key={project.id}
@@ -1994,9 +1712,7 @@ export default function DesignPage() {
                         onClick={(event) => {
                           const img =
                             event.currentTarget.querySelector("img");
-
                           if (!img) return;
-
                           openProject(
                             project,
                             img,
@@ -2038,7 +1754,6 @@ export default function DesignPage() {
                           />
                         </AnimatePresence>
                       </button>
-
                       {hasMultipleImages && (
                         <>
                           <button
@@ -2059,7 +1774,6 @@ export default function DesignPage() {
                               className="h-[15px] w-[15px] object-contain select-none pointer-events-none"
                             />
                           </button>
-
                           <button
                             type="button"
                             aria-label="Next image"
@@ -2088,11 +1802,9 @@ export default function DesignPage() {
           );
         })()}
       </motion.div>
-
       {/* ========================================================
           PROJECT VIEWER
       ======================================================== */}
-
       <AnimatePresence>
         {isViewerMounted &&
           selectedProject &&
@@ -2101,7 +1813,6 @@ export default function DesignPage() {
               {/* ==================================================
                   TRANSPARENT CLICK-OUTSIDE LAYER
               ================================================== */}
-
               <motion.div
                 key="viewer-click-layer"
                 className="fixed inset-0 z-30"
@@ -2138,20 +1849,16 @@ export default function DesignPage() {
                   }
                 }}
               />
-
               {/* ==================================================
                   SIDEBAR
-
                   Sits directly below the static site
                   header and to the left.
-
                   Its own control row (close / share /
                   prev / next) lives INSIDE it, as the
                   first bordered section — it is not a
                   separate fixed header and never
                   overlaps the static site header.
               ================================================== */}
-
               <WindowsSidebar
                 animationPhase={animationPhase}
                 chromeDuration={chromeDuration}
@@ -2166,14 +1873,11 @@ export default function DesignPage() {
                 showPreviousImage={showPreviousImage}
                 showNextImage={showNextImage}
               />
-
               {/* ==================================================
                   ARTWORK
-
                   SOURCE TILE -> LARGE ARTWORK
                   LARGE ARTWORK -> SOURCE TILE
               ================================================== */}
-
               <motion.div
                 className="group fixed z-40 overflow-hidden"
                 style={{
@@ -2225,7 +1929,6 @@ export default function DesignPage() {
                     />
                   </AnimatePresence>
                 )}
-
                 {selectedImages.length > 1 && (
                   <>
                     <button
@@ -2240,7 +1943,6 @@ export default function DesignPage() {
                         className="h-4 w-4 object-contain select-none pointer-events-none"
                       />
                     </button>
-
                     <button
                       type="button"
                       aria-label="Next image"
@@ -2259,27 +1961,20 @@ export default function DesignPage() {
             </>
           )}
       </AnimatePresence>
-
       {/* ========================================================
           FOOTER
       ======================================================== */}
-
-
       {/* Desktop footer */}
       <div className="max-md:hidden">
         <Footer />
       </div>
-
       {/* Mobile footer — appears after scrolling */}
       <div className="md:hidden">
         <MobileFooter />
       </div>
-
-
       {/* ========================================================
           LOADING
       ======================================================== */}
-
       {loading && (
         <div className="fixed bottom-6 left-6 z-10 font-['Degular'] text-sm font-semibold">
           Loading...

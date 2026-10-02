@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
 import { useState, useRef, useEffect } from "react";
-
 type Project = {
   id: number;
   name: string;
@@ -12,7 +11,6 @@ type Project = {
   project_date: string | null;
   description: string | null;
 };
-
 type WindowsSidebarProps = {
   animationPhase: "closed" | "opening" | "open" | "closing";
   chromeDuration: number;
@@ -22,14 +20,12 @@ type WindowsSidebarProps = {
   navigateProject: (direction: 1 | -1) => void;
   projectsLength: number;
   category: "design" | "video-edits";
-
   // Design specific
   selectedImageIndex?: number;
   selectedImagesLength?: number;
   showPreviousImage?: () => void;
   showNextImage?: () => void;
 };
-
 export default function WindowsSidebar({
   animationPhase,
   chromeDuration,
@@ -46,9 +42,7 @@ export default function WindowsSidebar({
 }: WindowsSidebarProps) {
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const SIDEBAR_WIDTH = 420;
-
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
@@ -56,10 +50,9 @@ export default function WindowsSidebar({
       }
     };
   }, []);
-
   return (
     <motion.aside
-      className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] min-w-0 max-w-none max-md:w-[50vw] max-md:min-w-0 max-md:max-w-none overflow-hidden border-r border-black bg-white"
+      className="fixed bottom-0 left-0 top-[clamp(4rem,10vh,5.6rem)] z-[100] w-[clamp(200px,20vw,380px)] max-md:w-[50vw] overflow-hidden border-r border-black bg-white"
       initial={{
         x: "-100%",
       }}
@@ -71,7 +64,6 @@ export default function WindowsSidebar({
         ease: EASE,
       }}
       style={{
-        width: `${SIDEBAR_WIDTH}px`,
         pointerEvents: animationPhase === "closing" ? "none" : "auto",
       }}
       onMouseDown={(event) => {
@@ -79,14 +71,11 @@ export default function WindowsSidebar({
       }}
     >
       <div className="flex h-full w-full flex-col">
-
         {/* =================================================
             CONTROL ROW
             X | SHARE |      | LEFT | RIGHT
         ================================================= */}
-
         <div className="flex h-[52px] shrink-0 border-b border-black max-md:h-[48px]">
-
           <button
             type="button"
             onClick={closeProject}
@@ -98,7 +87,6 @@ export default function WindowsSidebar({
               <span className="absolute left-1/2 top-1/2 h-[1.5px] w-[19px] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-black" />
             </span>
           </button>
-
           <button
             type="button"
             aria-label="Share"
@@ -111,19 +99,15 @@ export default function WindowsSidebar({
                     : ""
                   }`
                   : `${window.location.origin}/video-edits?project=${selectedProject.id}`;
-
               const shareData = {
                 title: selectedProject.name,
                 text: selectedProject.name,
                 url: shareUrl,
               };
-
               const isMobile =
                 typeof window !== "undefined" &&
                 window.matchMedia("(max-width: 768px)").matches;
-
               let shared = false;
-
               if (
                 isMobile &&
                 typeof navigator !== "undefined" &&
@@ -136,7 +120,6 @@ export default function WindowsSidebar({
                   // User dismissed or share failed
                 }
               }
-
               if (
                 !shared &&
                 typeof navigator !== "undefined" &&
@@ -145,11 +128,9 @@ export default function WindowsSidebar({
                 try {
                   await navigator.clipboard.writeText(shareUrl);
                   setCopied(true);
-
                   if (copyTimeoutRef.current) {
                     clearTimeout(copyTimeoutRef.current);
                   }
-
                   copyTimeoutRef.current = setTimeout(() => {
                     setCopied(false);
                   }, 2000);
@@ -166,7 +147,7 @@ export default function WindowsSidebar({
                 height="16"
                 viewBox="0 0 16 16"
                 fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+                xmlns="http\://www.w3.org/2000/svg"
               >
                 <path
                   d="M3 8.5L6.5 12L13 4"
@@ -182,7 +163,7 @@ export default function WindowsSidebar({
                 height="16"
                 viewBox="0 0 13 13"
                 fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+                xmlns="http\://www.w3.org/2000/svg"
               >
                 <path d="M6.5 9V1" stroke="black" strokeWidth="1" />
                 <path
@@ -198,7 +179,6 @@ export default function WindowsSidebar({
               </svg>
             )}
           </button>
-
           <div className="flex flex-1 items-center px-4 overflow-hidden">
             {copied && (
               <span className="font-['Degular'] text-[11px] font-semibold uppercase tracking-[0.08em] text-black/60 truncate transition-opacity duration-200">
@@ -206,7 +186,6 @@ export default function WindowsSidebar({
               </span>
             )}
           </div>
-
           <button
             type="button"
             onClick={() => navigateProject(-1)}
@@ -220,7 +199,6 @@ export default function WindowsSidebar({
               className="h-[18px] w-[18px] object-contain select-none pointer-events-none"
             />
           </button>
-
           <button
             type="button"
             onClick={() => navigateProject(1)}
@@ -235,16 +213,13 @@ export default function WindowsSidebar({
             />
           </button>
         </div>
-
         {/* =================================================
             NAME
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[24px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             NAME
           </div>
-
           <div className="relative left-[-2px] mt-[-4px] m-0 max-w-full p-0 font-['Degular'] font-semibold text-[48px] leading-[33px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[38px] max-md:leading-[33px] max-md:tracking-[-1.9px] max-md:scale-x-[1.1]">
             {selectedProject.name
               ? selectedProject.name.split(",").map((name, index) => (
@@ -255,16 +230,13 @@ export default function WindowsSidebar({
               : "—"}
           </div>
         </div>
-
         {/* =================================================
             SKILL
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             SKILL
           </div>
-
           <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[21px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.skill
               ? selectedProject.skill.split(",").map((skill, index) => (
@@ -275,16 +247,13 @@ export default function WindowsSidebar({
               : "—"}
           </div>
         </div>
-
         {/* =================================================
             KIND
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             KIND
           </div>
-
           <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[21px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.kind
               ? selectedProject.kind.split(",").map((kind, index) => (
@@ -295,16 +264,13 @@ export default function WindowsSidebar({
               : "—"}
           </div>
         </div>
-
         {/* =================================================
             SOFTWARE(S) USED
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[15px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             SOFTWARE(S) USED
           </div>
-
           <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[18px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.softwares
               ? selectedProject.softwares.split(",").map((software, index) => (
@@ -315,16 +281,13 @@ export default function WindowsSidebar({
               : "—"}
           </div>
         </div>
-
         {/* =================================================
             FOR WHOM
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             FOR WHOM
           </div>
-
           <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[21px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.client ? (
               selectedProject.client_url ? (
@@ -351,16 +314,13 @@ export default function WindowsSidebar({
             )}
           </div>
         </div>
-
         {/* =================================================
             WHEN
         ================================================= */}
-
         <div className="border-b border-black px-[24px] py-[20px] max-md:px-[16px] max-md:py-[16px]">
           <div className="font-['Degular'] font-regular text-[12px] leading-[12px] tracking-[-0.6px] scale-x-[1.3] origin-left">
             WHEN
           </div>
-
           <div className="relative left-[-1px] mt-[-3.5px] m-0 p-0 font-['Degular'] font-semibold text-[24px] leading-[21px] tracking-[-1.8px] transform scale-x-[1.3] origin-left max-md:text-[24px] max-md:leading-[22px] max-md:tracking-[-1.2px]">
             {selectedProject.project_date
               ? new Date(selectedProject.project_date)
@@ -372,11 +332,9 @@ export default function WindowsSidebar({
               : "—"}
           </div>
         </div>
-
         {/* =================================================
             DESCRIPTION
         ================================================= */}
-
         <div className="px-[24px] pt-[20px] max-md:px-[16px] max-md:pt-[16px]">
           {selectedProject.description && (
             <p className="m-0 max-w-full p-0 font-['Degular'] font-semibold text-[15px] leading-[21px] tracking-[-0.75px] scale-x-[1.3] origin-left">
@@ -384,11 +342,9 @@ export default function WindowsSidebar({
             </p>
           )}
         </div>
-
         {/* =================================================
             IMAGE COUNTER (Design Specific)
         ================================================= */}
-
         {category === "design" &&
           selectedImagesLength > 1 &&
           showPreviousImage &&
@@ -406,12 +362,10 @@ export default function WindowsSidebar({
                   className="h-[15px] w-[15px] object-contain select-none pointer-events-none"
                 />
               </button>
-
               <span>
                 {String(selectedImageIndex + 1).padStart(2, "0")} /{" "}
                 {String(selectedImagesLength).padStart(2, "0")}
               </span>
-
               <button
                 type="button"
                 onClick={showNextImage}

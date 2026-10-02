@@ -369,9 +369,14 @@ export default function MobileDesignProject({
                             lineHeight: NAME_LINE_HEIGHT,
                         }}
                     >
-                        {project.name}
+                        {project.name
+                            ? project.name.split(",").map((name, index) => (
+                                <span key={index} className="block">
+                                    {name.trim()}
+                                </span>
+                            ))
+                            : "—"}
                     </h1>
-
                 </div>
 
                 {/* SKILL */}

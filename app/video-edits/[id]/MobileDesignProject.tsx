@@ -401,7 +401,13 @@ export default function MobileVideoEditProject({
                             transform: `scaleX(${NAME_STRETCH})`,
                         }}
                     >
-                        {project.name}
+                        {project.name
+                            ? project.name.split(",").map((name, index) => (
+                                <span key={index} className="block">
+                                    {name.trim()}
+                                </span>
+                            ))
+                            : "—"}
                     </h1>
 
                 </div>
