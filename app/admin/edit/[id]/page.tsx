@@ -3,7 +3,10 @@
 import { DragEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isVideoFile, isVideoUrl, safeMediaFileName } from "@/lib/media";
+import DesignMediaPreview from "../../DesignMediaPreview";
 
+// One carousel item (image or video), existing or newly added.
 type DesignImage = {
     id: string;
     url: string;
@@ -173,12 +176,13 @@ export default function EditProjectPage() {
     function addDesignImages(files: FileList | File[]) {
         const selectedFiles = Array.from(files);
 
-        const validImages = selectedFiles.filter((file) =>
-            file.type.startsWith("image/")
+        const validImages = selectedFiles.filter(
+            (file) =>
+                file.type.startsWith("image/") || isVideoFile(file)
         );
 
         if (validImages.length !== selectedFiles.length) {
-            setError("Only image files are allowed.");
+            setError("Only image or video files are allowed.");
             return;
         }
 
@@ -334,10 +338,8 @@ export default function EditProjectPage() {
         file: File,
         index: number
     ) {
-        const safeImageName = file.name.replace(
-            /[^a-zA-Z0-9.-]/g,
-            "-"
-        );
+        // Keeps the extension so videos are recognised later.
+        const safeImageName = safeMediaFileName(file);
 
         const imagePath =
             `designs/${Date.now()}-${index + 1}-${safeImageName}`;
@@ -356,7 +358,7 @@ export default function EditProjectPage() {
         }
 
         if (form.category === "design" && designImages.length === 0) {
-            setError("Please upload at least one design image.");
+            setError("Please upload at least one design image or video.");
             return;
         }
 
@@ -827,26 +829,28 @@ export default function EditProjectPage() {
                             <div className="mb-5 flex items-end justify-between">
                                 <div>
                                     <h2 className="text-2xl font-semibold">
-                                        Project Images
+                                        Project Images &amp; Videos
                                     </h2>
 
                                     <p className="mt-1 text-sm">
-                                        Drag images to change their order.
+                                        Any aspect ratio (4:5, 1:1, 9:16,
+                                        16:9…). Drag to change the carousel
+                                        order.
                                     </p>
                                 </div>
 
                                 <p className="text-sm">
                                     {designImages.length}{" "}
                                     {designImages.length === 1
-                                        ? "image"
-                                        : "images"}
+                                        ? "item"
+                                        : "items"}
                                 </p>
                             </div>
 
                             {/* IMAGE GRID */}
 
                             {designImages.length > 0 && (
-                                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                                <div className="grid items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
                                     {designImages.map(
                                         (image, index) => (
                                             <div
@@ -872,14 +876,19 @@ export default function EditProjectPage() {
                                                     : "opacity-100"
                                                     }`}
                                             >
-                                                <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
-                                                    <img
-                                                        src={image.url}
-                                                        alt={`Slide ${index + 1
-                                                            }`}
-                                                        className="h-full w-full object-cover"
-                                                    />
-
+                                                <DesignMediaPreview
+                                                    url={image.url}
+                                                    isVideo={
+                                                        image.file
+                                                            ? isVideoFile(
+                                                                image.file
+                                                            )
+                                                            : isVideoUrl(
+                                                                image.url
+                                                            )
+                                                    }
+                                                    alt={`Slide ${index + 1}`}
+                                                >
                                                     <div className="absolute left-3 top-3 bg-black px-3 py-1 text-xs font-semibold text-white">
                                                         {index + 1}
                                                     </div>
@@ -895,7 +904,7 @@ export default function EditProjectPage() {
                                                             DRAG TO MOVE
                                                         </span>
                                                     </div>
-                                                </div>
+                                                </DesignMediaPreview>
 
                                                 <div className="flex items-center justify-between gap-3 border-t border-black p-3">
                                                     <div className="min-w-0">
@@ -938,7 +947,7 @@ export default function EditProjectPage() {
                                 <input
                                     id="edit-design-image-input"
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/*,video/*"
                                     multiple
                                     className="hidden"
                                     onChange={(e) => {
@@ -963,7 +972,7 @@ export default function EditProjectPage() {
                                     }
                                     className="border border-black px-4 py-2 text-sm"
                                 >
-                                    + Add More Images
+                                    + Add More Images / Videos
                                 </button>
                             </div>
                         </section>

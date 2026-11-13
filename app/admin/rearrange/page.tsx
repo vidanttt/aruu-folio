@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isVideoUrl } from "@/lib/media";
 
 type Category = "video-edit" | "design";
 
@@ -598,7 +599,7 @@ function RearrangeContent() {
                 }}
             >
                 {media ? (
-                    category === "video-edit" ? (
+                    category === "video-edit" || isVideoUrl(media) ? (
                         <video
                             src={media}
                             muted
@@ -723,7 +724,7 @@ function RearrangeContent() {
                             }}
                         >
                             {mediaFor(draggedProject) ? (
-                                category === "video-edit" ? (
+                                category === "video-edit" || isVideoUrl(mediaFor(draggedProject)) ? (
                                     <video src={mediaFor(draggedProject)!} muted loop playsInline preload="metadata" className="h-full w-full object-contain" />
                                 ) : (
                                     <img src={mediaFor(draggedProject)!} alt={draggedProject.name} className="h-full w-full object-contain" />

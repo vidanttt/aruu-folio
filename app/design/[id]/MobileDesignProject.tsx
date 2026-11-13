@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import MobileFooter from "../../components/MobileFooter";
 import Footer from "../../components/Footer";
+import { isVideoUrl } from "@/lib/media";
 
 type Project = {
     id: number;
@@ -293,33 +294,68 @@ export default function MobileDesignProject({
                     custom={slideDirection}
                     mode="sync"
                 >
-                    <motion.img
-                        key={image}
-                        src={image}
-                        alt={project.name}
-                        custom={slideDirection}
-                        initial={{
-                            x: `${slideDirection * 100}%`,
-                        }}
-                        animate={{ x: 0 }}
-                        exit={{
-                            x: `${slideDirection * -100}%`,
-                        }}
-                        transition={{
-                            duration: 0.32,
-                            ease: [0.22, 1, 0.36, 1],
-                        }}
-                        onLoad={(event) => {
-                            const img = event.currentTarget;
+                    {isVideoUrl(image) ? (
+                        <motion.video
+                            key={image}
+                            src={image}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            custom={slideDirection}
+                            initial={{
+                                x: `${slideDirection * 100}%`,
+                            }}
+                            animate={{ x: 0 }}
+                            exit={{
+                                x: `${slideDirection * -100}%`,
+                            }}
+                            transition={{
+                                duration: 0.32,
+                                ease: [0.22, 1, 0.36, 1],
+                            }}
+                            onLoadedMetadata={(event) => {
+                                const video = event.currentTarget;
 
-                            setImageHeight(
-                                (window.innerWidth / img.naturalWidth) *
-                                img.naturalHeight
-                            );
-                        }}
-                        className="absolute inset-0 h-full w-full object-contain"
-                        draggable={false}
-                    />
+                                if (!video.videoWidth || !video.videoHeight) return;
+
+                                setImageHeight(
+                                    (window.innerWidth / video.videoWidth) *
+                                    video.videoHeight
+                                );
+                            }}
+                            className="absolute inset-0 h-full w-full object-contain"
+                            draggable={false}
+                        />
+                    ) : (
+                        <motion.img
+                            key={image}
+                            src={image}
+                            alt={project.name}
+                            custom={slideDirection}
+                            initial={{
+                                x: `${slideDirection * 100}%`,
+                            }}
+                            animate={{ x: 0 }}
+                            exit={{
+                                x: `${slideDirection * -100}%`,
+                            }}
+                            transition={{
+                                duration: 0.32,
+                                ease: [0.22, 1, 0.36, 1],
+                            }}
+                            onLoad={(event) => {
+                                const img = event.currentTarget;
+
+                                setImageHeight(
+                                    (window.innerWidth / img.naturalWidth) *
+                                    img.naturalHeight
+                                );
+                            }}
+                            className="absolute inset-0 h-full w-full object-contain"
+                            draggable={false}
+                        />
+                    )}
                 </AnimatePresence>
 
                 {hasMultipleImages && (

@@ -17,6 +17,7 @@ import Footer from "../components/Footer";
 import MobileFooter from "../components/MobileFooter";
 import WindowsSidebar from "../components/WindowsSidebar";
 import { createClient } from "@/lib/supabase/client";
+import { isVideoUrl, loadMediaDimensions } from "@/lib/media";
 type Project = {
   id: number;
   name: string;
@@ -414,11 +415,11 @@ export default function DesignPage() {
    * even if the layout shifted while open.
    */
   const desktopTileRefs =
-    useRef<Record<number, HTMLImageElement | null>>(
+    useRef<Record<number, HTMLElement | null>>(
       {}
     );
   const mobileTileRefs =
-    useRef<Record<number, HTMLImageElement | null>>(
+    useRef<Record<number, HTMLElement | null>>(
       {}
     );
   function getLiveTileRect(
@@ -740,18 +741,17 @@ export default function DesignPage() {
     projects.forEach((project) => {
       const imageUrl = getProjectImages(project)[0];
       if (!imageUrl) return;
-      const image = new Image();
-      image.onload = () => {
-        if (cancelled) return;
+      // Works for both images and videos.
+      loadMediaDimensions(imageUrl).then(({ width, height }) => {
+        if (cancelled || !width || !height) return;
         setImageDimensions((current) => ({
           ...current,
           [project.id]: {
-            width: image.naturalWidth,
-            height: image.naturalHeight,
+            width,
+            height,
           },
         }));
-      };
-      image.src = imageUrl;
+      });
     });
     return () => {
       cancelled = true;
@@ -958,7 +958,7 @@ export default function DesignPage() {
    */
   function beginOpenProject(
     project: Project,
-    imageElement?: HTMLImageElement | null,
+    imageElement?: HTMLElement | null,
     initialImageIndex: number = 0
   ) {
     let sourceRect: Rect;
@@ -1004,7 +1004,7 @@ export default function DesignPage() {
   }
   function openProject(
     project: Project,
-    imageElement?: HTMLImageElement | null,
+    imageElement?: HTMLElement | null,
     initialImageIndex: number = 0
   ) {
     if (
@@ -1231,13 +1231,12 @@ export default function DesignPage() {
       images[selectedImageIndex];
     if (!imageUrl) return;
     let cancelled = false;
-    const image = new Image();
-    image.onload = () => {
+    loadMediaDimensions(imageUrl).then(({ width, height }) => {
       if (cancelled) return;
       const nextRect =
         calculateTargetRect(
-          image.naturalWidth,
-          image.naturalHeight
+          width,
+          height
         );
       animateArtworkRectTo(
         nextRect,
@@ -1257,8 +1256,7 @@ export default function DesignPage() {
             ? "open"
             : current
       );
-    };
-    image.src = imageUrl;
+    });
     return () => {
       cancelled = true;
     };
@@ -1302,19 +1300,17 @@ export default function DesignPage() {
       const imageUrl =
         images[imageIndex];
       if (!imageUrl) return;
-      const image = new Image();
-      image.onload = () => {
+      loadMediaDimensions(imageUrl).then(({ width, height }) => {
         const nextRect =
           calculateTargetRect(
-            image.naturalWidth,
-            image.naturalHeight
+            width,
+            height
           );
         animateArtworkRectTo(
           nextRect,
           0.3
         );
-      };
-      image.src = imageUrl;
+      });
     }
     window.addEventListener(
       "resize",
@@ -1531,7 +1527,7 @@ export default function DesignPage() {
                         type="button"
                         className="absolute inset-0 z-0 block h-full w-full overflow-hidden bg-white"
                         onClick={(event) => {
-                          const img = event.currentTarget.querySelector("img");
+                          const img = event.currentTarget.querySelector<HTMLElement>("img, video");
                           if (!img) return;
                           openProject(project, img, gridImageIndex);
                         }}
@@ -1541,33 +1537,66 @@ export default function DesignPage() {
                           custom={gridImageDirection}
                           mode="sync"
                         >
-                          <motion.img
-                            key={`${project.id}-${gridImageIndex}`}
-                            src={image}
-                            alt={project.name}
-                            custom={gridImageDirection}
-                            initial={{
-                              x: `${gridImageDirection * 100}%`,
-                            }}
-                            animate={{
-                              x: 0,
-                              opacity: isSelectedTile ? 0 : 1,
-                            }}
-                            exit={{
-                              x: `${gridImageDirection * -100}%`,
-                            }}
-                            transition={{
-                              duration: 0.90,
-                              ease: EASE,
-                            }}
-                            ref={(el) => {
-                              if (el) {
-                                desktopTileRefs.current[project.id] = el;
-                              }
-                            }}
-                            className="absolute inset-0 h-full w-full object-contain scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
-                            draggable={false}
-                          />
+                          {isVideoUrl(image) ? (
+                            <motion.video
+                              autoPlay
+                              muted
+                              loop
+                              playsInline
+                              key={`${project.id}-${gridImageIndex}`}
+                              src={image}
+                              custom={gridImageDirection}
+                              initial={{
+                                x: `${gridImageDirection * 100}%`,
+                              }}
+                              animate={{
+                                x: 0,
+                                opacity: isSelectedTile ? 0 : 1,
+                              }}
+                              exit={{
+                                x: `${gridImageDirection * -100}%`,
+                              }}
+                              transition={{
+                                duration: 0.90,
+                                ease: EASE,
+                              }}
+                              ref={(el) => {
+                                if (el) {
+                                  desktopTileRefs.current[project.id] = el;
+                                }
+                              }}
+                              className="absolute inset-0 h-full w-full object-contain scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
+                              draggable={false}
+                            />
+                          ) : (
+                            <motion.img
+                              key={`${project.id}-${gridImageIndex}`}
+                              src={image}
+                              alt={project.name}
+                              custom={gridImageDirection}
+                              initial={{
+                                x: `${gridImageDirection * 100}%`,
+                              }}
+                              animate={{
+                                x: 0,
+                                opacity: isSelectedTile ? 0 : 1,
+                              }}
+                              exit={{
+                                x: `${gridImageDirection * -100}%`,
+                              }}
+                              transition={{
+                                duration: 0.90,
+                                ease: EASE,
+                              }}
+                              ref={(el) => {
+                                if (el) {
+                                  desktopTileRefs.current[project.id] = el;
+                                }
+                              }}
+                              className="absolute inset-0 h-full w-full object-contain scale-[1.006] transition-[transform,filter] duration-700 ease-out group-hover:scale-[1.011] group-hover:contrast-[1.25]"
+                              draggable={false}
+                            />
+                          )}
                         </AnimatePresence>
                       </button>
                       {hasMultipleImages && (
@@ -1691,7 +1720,7 @@ export default function DesignPage() {
                         className="absolute inset-0 z-0 h-full w-full overflow-hidden bg-white"
                         onClick={(event) => {
                           const img =
-                            event.currentTarget.querySelector("img");
+                            event.currentTarget.querySelector<HTMLElement>("img, video");
                           if (!img) return;
                           openProject(
                             project,
@@ -1705,33 +1734,66 @@ export default function DesignPage() {
                           custom={gridImageDirection}
                           mode="sync"
                         >
-                          <motion.img
-                            key={`${project.id}-${gridImageIndex}`}
-                            src={image}
-                            alt={project.name}
-                            custom={gridImageDirection}
-                            initial={{
-                              x: `${gridImageDirection * 100}%`,
-                            }}
-                            animate={{
-                              x: 0,
-                              opacity: isSelectedTile ? 0 : 1,
-                            }}
-                            exit={{
-                              x: `${gridImageDirection * -100}%`,
-                            }}
-                            transition={{
-                              duration: 0.32,
-                              ease: EASE,
-                            }}
-                            ref={(el) => {
-                              if (el) {
-                                mobileTileRefs.current[project.id] = el;
-                              }
-                            }}
-                            className="absolute inset-0 h-full w-full object-contain"
-                            draggable={false}
-                          />
+                          {isVideoUrl(image) ? (
+                            <motion.video
+                              autoPlay
+                              muted
+                              loop
+                              playsInline
+                              key={`${project.id}-${gridImageIndex}`}
+                              src={image}
+                              custom={gridImageDirection}
+                              initial={{
+                                x: `${gridImageDirection * 100}%`,
+                              }}
+                              animate={{
+                                x: 0,
+                                opacity: isSelectedTile ? 0 : 1,
+                              }}
+                              exit={{
+                                x: `${gridImageDirection * -100}%`,
+                              }}
+                              transition={{
+                                duration: 0.32,
+                                ease: EASE,
+                              }}
+                              ref={(el) => {
+                                if (el) {
+                                  mobileTileRefs.current[project.id] = el;
+                                }
+                              }}
+                              className="absolute inset-0 h-full w-full object-contain"
+                              draggable={false}
+                            />
+                          ) : (
+                            <motion.img
+                              key={`${project.id}-${gridImageIndex}`}
+                              src={image}
+                              alt={project.name}
+                              custom={gridImageDirection}
+                              initial={{
+                                x: `${gridImageDirection * 100}%`,
+                              }}
+                              animate={{
+                                x: 0,
+                                opacity: isSelectedTile ? 0 : 1,
+                              }}
+                              exit={{
+                                x: `${gridImageDirection * -100}%`,
+                              }}
+                              transition={{
+                                duration: 0.32,
+                                ease: EASE,
+                              }}
+                              ref={(el) => {
+                                if (el) {
+                                  mobileTileRefs.current[project.id] = el;
+                                }
+                              }}
+                              className="absolute inset-0 h-full w-full object-contain"
+                              draggable={false}
+                            />
+                          )}
                         </AnimatePresence>
                       </button>
                       {hasMultipleImages && (
@@ -1883,30 +1945,60 @@ export default function DesignPage() {
                     custom={imageDirection}
                     mode="sync"
                   >
-                    <motion.img
-                      key={`${selectedProject.id}-${selectedImageIndex}`}
-                      custom={imageDirection}
-                      src={selectedImages[selectedImageIndex]}
-                      alt={selectedProject.name}
-                      initial={{
-                        x: imageDirection * 40,
-                        opacity: 0,
-                      }}
-                      animate={{
-                        x: 0,
-                        opacity: 1,
-                      }}
-                      exit={{
-                        x: imageDirection * -40,
-                        opacity: 0,
-                      }}
-                      transition={{
-                        duration: 0.3,
-                        ease: EASE,
-                      }}
-                      className="absolute inset-0 h-full w-full select-none object-contain"
-                      draggable={false}
-                    />
+                    {isVideoUrl(selectedImages[selectedImageIndex]) ? (
+                      <motion.video
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        key={`${selectedProject.id}-${selectedImageIndex}`}
+                        custom={imageDirection}
+                        src={selectedImages[selectedImageIndex]}
+                        initial={{
+                          x: imageDirection * 40,
+                          opacity: 0,
+                        }}
+                        animate={{
+                          x: 0,
+                          opacity: 1,
+                        }}
+                        exit={{
+                          x: imageDirection * -40,
+                          opacity: 0,
+                        }}
+                        transition={{
+                          duration: 0.3,
+                          ease: EASE,
+                        }}
+                        className="absolute inset-0 h-full w-full select-none object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <motion.img
+                        key={`${selectedProject.id}-${selectedImageIndex}`}
+                        custom={imageDirection}
+                        src={selectedImages[selectedImageIndex]}
+                        alt={selectedProject.name}
+                        initial={{
+                          x: imageDirection * 40,
+                          opacity: 0,
+                        }}
+                        animate={{
+                          x: 0,
+                          opacity: 1,
+                        }}
+                        exit={{
+                          x: imageDirection * -40,
+                          opacity: 0,
+                        }}
+                        transition={{
+                          duration: 0.3,
+                          ease: EASE,
+                        }}
+                        className="absolute inset-0 h-full w-full select-none object-contain"
+                        draggable={false}
+                      />
+                    )}
                   </AnimatePresence>
                 )}
                 {selectedImages.length > 1 && (

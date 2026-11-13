@@ -2,6 +2,15 @@
 
 import { DragEvent, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isVideoFile, safeMediaFileName } from "@/lib/media";
+import DesignMediaPreview from "../DesignMediaPreview";
+
+// One carousel item: an image or a video, in display order.
+type DesignMedia = {
+    id: string;
+    file: File;
+    url: string;
+};
 
 export default function NewProjectPage() {
     const supabase = createClient();
@@ -20,7 +29,7 @@ export default function NewProjectPage() {
     const [previewVideoFile, setPreviewVideoFile] =
         useState<File | null>(null);
 
-    const [designImages, setDesignImages] = useState<File[]>([]);
+    const [designImages, setDesignImages] = useState<DesignMedia[]>([]);
     const [draggingImageIndex, setDraggingImageIndex] =
         useState<number | null>(null);
 
@@ -50,18 +59,25 @@ export default function NewProjectPage() {
     function addDesignImages(files: FileList | File[]) {
         const selectedFiles = Array.from(files);
 
-        const validImages = selectedFiles.filter((file) =>
-            file.type.startsWith("image/")
+        const validMedia = selectedFiles.filter(
+            (file) =>
+                file.type.startsWith("image/") || isVideoFile(file)
         );
 
-        if (validImages.length !== selectedFiles.length) {
-            setStatus("Only image files are allowed.");
+        if (validMedia.length !== selectedFiles.length) {
+            setStatus("Only image or video files are allowed.");
             return;
         }
 
-        if (validImages.length === 0) return;
+        if (validMedia.length === 0) return;
 
-        setDesignImages((current) => [...current, ...validImages]);
+        const newItems: DesignMedia[] = validMedia.map((file, index) => ({
+            id: `new-${Date.now()}-${index}-${file.name}`,
+            file,
+            url: URL.createObjectURL(file),
+        }));
+
+        setDesignImages((current) => [...current, ...newItems]);
         setStatus("");
     }
 
@@ -73,9 +89,15 @@ export default function NewProjectPage() {
     }
 
     function removeDesignImage(index: number) {
-        setDesignImages((current) =>
-            current.filter((_, imageIndex) => imageIndex !== index)
-        );
+        setDesignImages((current) => {
+            const item = current[index];
+
+            if (item) {
+                URL.revokeObjectURL(item.url);
+            }
+
+            return current.filter((_, imageIndex) => imageIndex !== index);
+        });
     }
 
     function moveDesignImage(fromIndex: number, toIndex: number) {
@@ -173,7 +195,7 @@ export default function NewProjectPage() {
         }
 
         if (category === "design" && designImages.length === 0) {
-            setStatus("Please upload at least one design image.");
+            setStatus("Please upload at least one design image or video.");
             return;
         }
 
@@ -223,18 +245,16 @@ export default function NewProjectPage() {
                     index < designImages.length;
                     index++
                 ) {
-                    const image = designImages[index];
+                    const media = designImages[index].file;
 
-                    const safeImageName = image.name.replace(
-                        /[^a-zA-Z0-9.-]/g,
-                        "-"
-                    );
+                    // Keeps the extension so videos are recognised later.
+                    const safeImageName = safeMediaFileName(media);
 
                     const imagePath =
                         `designs/${timestamp}-${index + 1}-${safeImageName}`;
 
                     const uploaded = await uploadToR2(
-                        image,
+                        media,
                         imagePath
                     );
 
@@ -242,7 +262,7 @@ export default function NewProjectPage() {
                     storagePaths.push(uploaded.path);
                 }
 
-                // First image acts as the project thumbnail
+                // First carousel item acts as the project thumbnail
                 previewUrl = imageUrls[0] || null;
             }
 
@@ -615,12 +635,13 @@ export default function NewProjectPage() {
                 {category === "design" && (
                     <section>
                         <h2 className="mb-2 text-2xl font-semibold">
-                            Project Images
+                            Project Images &amp; Videos
                         </h2>
 
                         <p className="mb-6 text-sm">
-                            Upload multiple images and drag them to set
-                            their order.
+                            Upload images and/or videos in any aspect
+                            ratio (4:5, 1:1, 9:16, 16:9…) and drag them
+                            to set their carousel order.
                         </p>
 
                         {/* UPLOAD AREA */}
@@ -649,7 +670,7 @@ export default function NewProjectPage() {
                             <input
                                 id="design-image-input"
                                 type="file"
-                                accept="image/*"
+                                accept="image/*,video/*"
                                 multiple
                                 className="hidden"
                                 onChange={(e) => {
@@ -664,7 +685,7 @@ export default function NewProjectPage() {
                             />
 
                             <p className="text-lg font-semibold">
-                                Drop design images here
+                                Drop design images or videos here
                             </p>
 
                             <p className="mt-2 text-sm">
@@ -672,7 +693,7 @@ export default function NewProjectPage() {
                             </p>
 
                             <p className="mt-4 text-xs">
-                                Multiple images supported
+                                Mix images and videos in any order
                             </p>
                         </div>
 
@@ -684,8 +705,8 @@ export default function NewProjectPage() {
                                     <p className="text-sm font-semibold">
                                         {designImages.length}{" "}
                                         {designImages.length === 1
-                                            ? "IMAGE"
-                                            : "IMAGES"}
+                                            ? "ITEM"
+                                            : "ITEMS"}
                                     </p>
 
                                     <p className="text-xs">
@@ -693,11 +714,11 @@ export default function NewProjectPage() {
                                     </p>
                                 </div>
 
-                                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                                <div className="grid items-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
                                     {designImages.map(
                                         (image, index) => (
                                             <div
-                                                key={`${image.name}-${index}`}
+                                                key={image.id}
                                                 draggable
                                                 onDragStart={() =>
                                                     handleImageDragStart(
@@ -719,16 +740,13 @@ export default function NewProjectPage() {
                                                     : "opacity-100"
                                                     }`}
                                             >
-                                                <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
-                                                    <img
-                                                        src={URL.createObjectURL(
-                                                            image
-                                                        )}
-                                                        alt={`Slide ${index + 1
-                                                            }`}
-                                                        className="h-full w-full object-cover"
-                                                    />
-
+                                                <DesignMediaPreview
+                                                    url={image.url}
+                                                    isVideo={isVideoFile(
+                                                        image.file
+                                                    )}
+                                                    alt={`Slide ${index + 1}`}
+                                                >
                                                     <div className="absolute left-3 top-3 bg-black px-3 py-1 text-xs font-semibold text-white">
                                                         {index + 1}
                                                     </div>
@@ -738,7 +756,7 @@ export default function NewProjectPage() {
                                                             DRAG TO MOVE
                                                         </span>
                                                     </div>
-                                                </div>
+                                                </DesignMediaPreview>
 
                                                 <div className="flex items-center justify-between gap-3 border-t border-black p-3">
                                                     <div className="min-w-0">
@@ -749,7 +767,7 @@ export default function NewProjectPage() {
                                                         </p>
 
                                                         <p className="truncate text-xs">
-                                                            {image.name}
+                                                            {image.file.name}
                                                         </p>
                                                     </div>
 
@@ -781,7 +799,7 @@ export default function NewProjectPage() {
                                     }
                                     className="mt-5 border border-black px-4 py-2 text-sm"
                                 >
-                                    + Add More Images
+                                    + Add More Images / Videos
                                 </button>
                             </div>
                         )}
